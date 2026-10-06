@@ -6,7 +6,7 @@ Date: 2026-10-06. Implementation branch: `DEV-26-establish-the-initial-paperclip
 
 Paperclip `currentExecutionWorkspace` ID `420aecc0-9f28-49e4-abf6-81a84535ca60` identifies the expected repository, project workspace `e5e5b3e2-5220-41d4-89d5-2c795d72af23`, isolated_workspace mode, git_worktree strategy and assigned non-main branch. `git worktree list --porcelain` confirms the registered linked worktree. `baseRef` is `origin/main`; both `main` and `origin/main` resolve to baseline `bcf57a0121761a42d775064caf680d1f1e4159cc`. No branch/worktree was recreated or repointed.
 
-## Executed checks
+## Initial verification (before runtime loopback correction)
 
 | Command/check | Result |
 | --- | --- |
@@ -20,10 +20,27 @@ Paperclip `currentExecutionWorkspace` ID `420aecc0-9f28-49e4-abf6-81a84535ca60` 
 | `curl -i http://127.0.0.1:4288/` while preview runs | HTTP 403; JSON error code `network_target_denied`, message `Network target denied by Paperclip sandbox policy.` |
 | Local bind diagnostic on 4288 before starting Vite | Bind succeeded: this was not a real port collision. |
 
-## Runtime limitation and required action
+## Resumed verification after runtime loopback correction
 
-The runtime provides HTTP proxy bindings and empty `NO_PROXY`/`no_proxy`; requests to the local preview are rejected by Paperclip's network policy. We did not alter those bindings, bypass the proxy, disable security controls, or allow additional destinations. The started preview process was stopped after collecting evidence.
+On 2026-10-06, resumed the same registered DEV-26 worktree at clean implementation head `a5a2cea5f62d37342c744f39080aec06d16cdaf3`. Confirmed origin URL, assigned non-main branch, project workspace ID and git_worktree strategy from the supplied workspace metadata and local Git. GitHub default branch and PR #1 base remain `main`. No implementation, branch, worktree or PR was recreated.
 
-**Unblock owner: Paperclip runtime/operator, coordinated by the Orchestrator.** Provide an approved browser-accessible loopback preview route for this assigned workspace (currently `127.0.0.1:4288`), then resume Developer to run `npm run build` and `npm run test:browser`. If the approved route changes, update the test base URL and server command to that route. No replacement branch or worktree is needed.
+| Command/check | Result |
+| --- | --- |
+| `npm run preview -- --port 4288 --strictPort` | PASS: existing production preview starts. |
+| `curl -i --max-time 10 http://127.0.0.1:4288/` | PASS: HTTP 200 with application HTML. Preview stopped before the suite starts its own server. |
+| `npm test` | PASS: all 6 tests. |
+| `npm run build` | PASS: TypeScript and Vite; 17 modules transformed. |
+| `npx playwright install chromium` | PASS: installed Chromium 1243 and headless shell into this run's fresh cache. Installer automatically used an available FFmpeg mirror after two policy-denied mirrors. No network policy or proxy settings changed. |
+| `npm run test:browser` | PASS: both Chromium tests, 3.6 seconds. Initial attempt lacked the browser executable; rerun after installation passed. |
+| Desktop browser assertions | Exactly four named roles and roster entries; mixed, all-idle and all-working states; canvas changes between idle/working; placement stable through state changes and reload; reload restores mixed fixture; no console/page errors or external requests. |
+| Mobile browser assertions | 390px viewport; all labels inside scene; no horizontal overflow; keyboard activation; reduced-motion canvas remains stable while working state remains visible. |
+| Screenshot inspection | Desktop and mobile screenshots visually inspected: four distinct characters/desks and readable role labels, roster and demo controls. See images below. |
+| `git diff main...HEAD --check` | PASS. |
 
-No successful browser rendering, screenshot, reload test, visual inspection, browser-console check or responsive verification is claimed. The tests for those checks are committed but cannot yet execute in this runtime. The PR is an implementation draft pending required runtime verification; DEV-28 must remain blocked, not done. The exact pushed PR head SHA is recorded in the issue/PR handoff rather than self-referenced in this source file.
+![Desktop mixed activity](screenshots/office-desktop.png)
+
+![Mobile all working with reduced motion](screenshots/office-mobile.png)
+
+The previous preview-network blocker is resolved. Runtime coverage is Chromium desktop and mobile emulation, not other browser engines or physical devices. Live Paperclip integration remains intentionally out of scope. No downstream QA/reviewer tasks were created and no merge was performed. Exact final PR head is recorded in the PR/issue handoff because a commit cannot self-reference its own hash.
+
+The Paperclip control-plane API at the supplied `http://127.0.0.1:3100` refused connections in this run. This does not affect the successful application preview/browser checks; final status recording is attempted separately, with adapter/runtime fallback if unavailable.
