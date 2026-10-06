@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "NODE_USE_ENV_PROXY=1 vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "preview": "NODE_USE_ENV_PROXY=1 vite preview --host 127.0.0.1",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "playwright test"
   },

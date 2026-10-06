@@ -58,3 +58,38 @@ test('mobile labels fit, controls are keyboard accessible, reduced motion retain
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
   await page.screenshot({ path: 'test-results/office-mobile.png', fullPage: true })
 })
+
+test('live polls without reload, preserves state on failure and recovers', async ({ page }) => {
+  let count = 0
+  await page.route('**/api/office-state', async route => {
+    count++
+    if (count === 3) return route.fulfill({ status: 503, json: { error: 'Office state unavailable' } })
+    await route.fulfill({ json: { mode: 'live', snapshot: {
+      orchestrator: 'idle', developer: count === 2 || count === 3 ? 'working' : 'idle', 'browser-qa': 'idle', reviewer: 'idle',
+    } } })
+  })
+  await page.goto('/')
+  await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+  await expect(page.getByRole('button', { name: 'All working', exact: true })).toBeHidden()
+  await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'working')
+  await expect(page.locator('.source')).toHaveText('DISCONNECTED')
+  await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'working')
+  await expect(page.locator('.demo-note')).toContainText('last received')
+  await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+  await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'idle')
+  expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1)
+})
+
+test('initial disconnect never shows demo activity and later connects', async ({ page }) => {
+  let count = 0
+  await page.route('**/api/office-state', route => {
+    count++
+    return route.fulfill(count === 1 ? { status: 503, json: { error: 'Office state unavailable' } } : { json: { mode: 'live', snapshot: { orchestrator: 'idle', developer: 'working', 'browser-qa': 'idle', reviewer: 'idle' } } })
+  })
+  await page.goto('/')
+  await expect(page.locator('.source')).toHaveText('DISCONNECTED')
+  await expect(page.locator('.desk-label[data-activity="working"]')).toHaveCount(0)
+  await expect(page.getByRole('status')).toHaveText('Activity unavailable')
+  await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+  await expect(page.locator('.desk-label[data-activity="working"]')).toHaveCount(1)
+})
