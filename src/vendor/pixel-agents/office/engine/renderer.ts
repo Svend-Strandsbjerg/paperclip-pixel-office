@@ -102,4 +102,3 @@ export function renderScene(
     d.draw(ctx)
   }
 }
-
