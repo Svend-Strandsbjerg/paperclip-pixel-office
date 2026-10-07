@@ -14,7 +14,11 @@ const types: Record<string, string> = {
 export async function createOfficeServer(env: NodeJS.ProcessEnv = process.env, directory = fileURLToPath(new URL('../dist/', import.meta.url))) {
   const root = await realpath(directory)
   // Refuse to report readiness without a built frontend.
-  const index = await readFile(resolve(root, 'index.html'))
+  const indexPath = await realpath(resolve(root, 'index.html'))
+  if (!indexPath.startsWith(root + sep) || !(await stat(indexPath)).isFile()) {
+    throw new Error('Frontend index must be a regular file within dist')
+  }
+  const index = await readFile(indexPath)
   const bridge = officeMiddleware(env)
   return createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff')

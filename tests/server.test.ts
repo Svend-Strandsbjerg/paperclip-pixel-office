@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer, type Server } from 'node:http'
 import { once } from 'node:events'
 import { spawn } from 'node:child_process'
-import { readFile, readdir, mkdtemp, writeFile, symlink, rm } from 'node:fs/promises'
+import { readFile, readdir, mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createOfficeServer, listenConfig } from '../server/index.ts'
@@ -97,6 +97,22 @@ test('real HTTP upstream stays read-only, sanitizes tasks, survives outage and r
   await close(upstream)
   assert.equal((await fetch(url + '/api/office-state')).status, 503)
   assert.equal((await fetch(url + '/health')).status, 200)
+})
+
+test('outside-root index symlink and non-file index reject before server readiness', async t => {
+  const directory = await mkdtemp(join(process.env.PAPERCLIP_RUN_SCRATCH_DIR || tmpdir(), 'office-index-test-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const root = join(directory, 'dist')
+  await mkdir(root)
+  const outside = join(directory, 'private.html')
+  await writeFile(outside, 'outside-root content')
+  const index = join(root, 'index.html')
+  await symlink(outside, index)
+  // Construction must reject before callers can listen or report /health readiness.
+  await assert.rejects(createOfficeServer({ OFFICE_MODE: 'demo' }, root), /Frontend index must be a regular file within dist/)
+  await rm(index)
+  await mkdir(index)
+  await assert.rejects(createOfficeServer({ OFFICE_MODE: 'demo' }, root), /Frontend index must be a regular file within dist/)
 })
 
 test('missing config does not prevent readiness; static symlinks cannot expose files outside dist', async t => {
