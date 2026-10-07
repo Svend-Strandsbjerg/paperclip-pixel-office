@@ -1,0 +1,26 @@
+# Example only. Review paths/user/environment before operator installation.
+[Unit]
+Description=Paperclip Pixel Office (read-only visualization)
+After=network.target
+
+[Service]
+Type=simple
+User=pixel-office
+Group=pixel-office
+WorkingDirectory=/opt/pixel-office
+Environment=NODE_ENV=production
+Environment=NODE_USE_ENV_PROXY=1
+EnvironmentFile=/etc/pixel-office/environment
+ExecStart=/usr/bin/node server/index.ts
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
