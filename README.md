@@ -56,6 +56,8 @@ The renderer remains unaware of credentials, APIs and transport. Additional role
 
 Unit tests cover the exact role roster/coordinates, input normalization, immutable identities, all demo modes, deterministic scene adaptation, typing frames and reduced motion. Browser tests live in `tests/browser/`. Their screenshots are generated under ignored `test-results/` when checks can run. No unverified screenshots are committed.
 
+Provider validation accepts only plain snapshots, keeps known role activities and bounded task fields, and discards unexpected fields. Fake-clock polling tests cover the 1.5-second cadence, serial requests, timeout/retry, last-valid-state retention, recovery, disposal, demo shutdown, and live handoff hydration/recovery. `running` maps to working; `active` and other non-running statuses map to idle.
+
 ## Live configuration and operation
 
 Copy `.env.example` to `.env` and fill in server-only values, or supply environment variables (which take precedence). Never prefix secrets with `VITE_`; Vite exposes such variables to browser code. Do not commit `.env` or credentials.
