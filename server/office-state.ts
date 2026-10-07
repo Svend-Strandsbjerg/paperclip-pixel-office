@@ -3,14 +3,32 @@ import { ROLES, demoSnapshot, type Activity, type RoleId } from '../src/state.ts
 
 import type { Task } from '../src/handoff.ts'
 
+/** Only explicit exact-SHA labels in the authoritative QA assignment are used.
+ * Conflicting labels, abbreviated hashes and incidental commit mentions stay absent. */
+export function qaSha(description: unknown): string | undefined {
+  if (typeof description !== 'string') return undefined
+  const hashes = [...description.matchAll(/^\s*(?:-\s*)?(?:Exact SHA|Required exact SHA|Exact required PR head SHA|Required tested SHA|Exact PR head SHA(?: to test)?|Immutable SHA to test):\s*`?([a-f0-9]{40})`?\s*$/gim)].map(m => m[1].toLowerCase())
+  return new Set(hashes).size === 1 ? hashes[0] : undefined
+}
+
 /** Parent must belong to the configured Orchestrator; unrelated work is excluded. */
 export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
   if (!Array.isArray(input)) throw new Error('Invalid issues')
   const items = input.filter(i => i && typeof i.id === 'string')
   const parents = new Set(items.filter(i => i.assigneeAgentId === ids.orchestrator).map(i => i.id))
-  return items.filter(i => typeof i.title === 'string' && parents.has(i.parentId) && i.assigneeAgentId === ids.developer &&
+  const completedFlows = new Set(items.filter(i => i.assigneeAgentId === ids.developer && i.status === 'done' && parents.has(i.parentId)).map(i => i.parentId))
+  return items.filter(i => typeof i.title === 'string' && parents.has(i.parentId) && (i.assigneeAgentId === ids.developer || (i.assigneeAgentId === ids['browser-qa'] && completedFlows.has(i.parentId))) &&
     typeof i.identifier === 'string' && /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(i.identifier) && i.identifier.length <= 32)
-    .map(i => ({ taskId: i.identifier, title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task' }))
+    .map(i => {
+      const qa = i.assigneeAgentId === ids['browser-qa']
+      const sha = qa ? qaSha(i.description) : undefined
+      return {
+        taskId: i.identifier,
+        title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task',
+        ...(qa ? { target: 'browser-qa' as const } : {}),
+        ...(sha ? { sha } : {}),
+      }
+    })
     .sort((a, b) => a.taskId.localeCompare(b.taskId))
 }
 

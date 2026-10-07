@@ -1,7 +1,9 @@
 /** Visual-only payload: no Paperclip identities or activity overrides. */
-export type Task = { taskId: string; title: string }
-export type Handoff = Task & { source: 'orchestrator'; target: 'developer' }
+export type Destination = 'developer' | 'browser-qa'
+export type Task = { taskId: string; title: string; target?: Destination; sha?: string }
+export type Handoff = Task & { source: 'orchestrator'; target: Destination }
 export const demoHandoff: Handoff = { source: 'orchestrator', target: 'developer', taskId: 'DEMO-1', title: 'Build the next office feature' }
+export const demoQaHandoff: Handoff = { source: 'orchestrator', target: 'browser-qa', taskId: 'DEMO-2', title: 'Test the implementation', sha: 'abc1234abc1234abc1234abc1234abc1234abc1234a' }
 export const SEEN_LIMIT = 10000
 export function handoffTracker() {
   let previous: Set<string> | undefined
@@ -10,8 +12,9 @@ export function handoffTracker() {
   return (tasks: Task[] | null): Handoff[] => {
     if (tasks === null) { previous = undefined; return [] }
     if (saturated) return []
-    const current = new Set(tasks.map(t => t.taskId))
-    const events = previous ? tasks.filter(t => !previous!.has(t.taskId) && !seen.has(t.taskId)).map(t => ({ ...t, source: 'orchestrator' as const, target: 'developer' as const })) : []
+    const key = (t: Task) => `${t.target ?? 'developer'}:${t.taskId}`
+    const current = new Set(tasks.map(key))
+    const events = previous ? tasks.filter(t => !previous!.has(key(t)) && !seen.has(key(t))).map(t => ({ ...t, source: 'orchestrator' as const, target: t.target ?? 'developer' as const })) : []
     for (const id of current) {
       if (!seen.has(id) && seen.size === SEEN_LIMIT) {
         // Fail quiet rather than evicting IDs and replaying old assignments.
@@ -26,17 +29,18 @@ export function handoffTracker() {
   }
 }
 
-// The extracted foundation has no movement updater. This one fixed route uses
-// its WALK frames/directions, along the open aisle above the permanent desks.
-const route = [[6, 6], [6, 5], [16, 5], [16, 6]] as const
+// Both destinations share timing and WALK frames; routes stay in the open aisles.
+const routes = { developer: [[6, 6], [6, 5], [16, 5], [16, 6]], 'browser-qa': [[6, 6], [8, 6], [8, 12], [7, 12]] } as const
 export const WALK_SECONDS = 4
 export const BUBBLE_SECONDS = 3
 export const HANDOFF_SECONDS = WALK_SECONDS * 2 + BUBBLE_SECONDS
-export function handoffPose(seconds: number) {
+export function handoffPose(seconds: number, target: Destination = 'developer') {
+  const route = routes[target]
+  const length = route.slice(1).reduce((sum, point, i) => sum + Math.abs(point[0] - route[i][0]) + Math.abs(point[1] - route[i][1]), 0)
   const returning = seconds >= WALK_SECONDS + BUBBLE_SECONDS
   const phase = seconds < WALK_SECONDS ? 'outbound' : returning ? 'returning' : 'bubble'
   const progress = phase === 'bubble' ? 1 : Math.min(1, Math.max(0, (returning ? seconds - WALK_SECONDS - BUBBLE_SECONDS : seconds) / WALK_SECONDS))
-  const distance = (returning ? 1 - progress : progress) * 12
+  const distance = (returning ? 1 - progress : progress) * length
   let remaining = distance
   for (let i = 1; i < route.length; i++) {
     const [x, y] = route[i - 1], [tx, ty] = route[i]

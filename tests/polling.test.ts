@@ -75,7 +75,7 @@ test('task hydration, delegation, malformed responses and issue recovery preserv
   const task = (id: number) => ({ taskId: `DEV-${id}`, title: `Task ${id}` })
   const replies = [
     { ...live, tasks: [task(1)] },
-    { ...live, tasks: [task(1), { ...task(2), target: 'reviewer', secret: 'private' }] },
+    { ...live, tasks: [task(1), { ...task(2), source: 'reviewer', secret: 'private' }] },
     { ...live, snapshot: {} },
     { ...live, tasks: [task(1), task(2), task(3)] },
     { ...live, tasks: null },

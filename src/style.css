@@ -69,3 +69,5 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 .task-bubble { position: absolute; z-index: 3; left: 40%; top: 5%; width: 55%; box-sizing: border-box; padding: 10px 12px; border: 2px solid #38554f; border-radius: 8px; background: #fffdf0; color: #243c36; font-size: clamp(11px, 1.5vw, 15px); line-height: 1.4; overflow-wrap: anywhere; box-shadow: 0 3px 0 #38554f33; pointer-events: none; }
 .task-bubble[hidden] { display: none; }
 @media (max-width: 600px) { .task-bubble { left: 3%; top: 1%; width: 94%; padding: 5px 8px; line-height: 1.2; } }
+
+.task-bubble[data-target="browser-qa"] { left: 3%; top: 34%; width: 94%; }

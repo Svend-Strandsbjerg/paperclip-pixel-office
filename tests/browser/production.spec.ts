@@ -4,19 +4,28 @@ import { once } from 'node:events'
 import { spawn } from 'node:child_process'
 
 test('production start bridges live HTTP reads, handoff, outage/recovery and reload without leaking credentials', async ({ page }) => {
-  test.setTimeout(60000)
+  test.setTimeout(90000)
   const ids = { orchestrator: 'private-orchestrator', developer: 'private-developer', 'browser-qa': 'private-qa', reviewer: 'private-reviewer' }
   const secret = 'production-browser-test-secret'
   let broken = false
   let delegated = false
+  let qaDelegated = false
+  let qaRunning = false
+  let issuesBroken = false
+  let missedQa = false
   const upstreamMethods: string[] = []
   const upstream = createServer((req, res) => {
     upstreamMethods.push(req.method!)
     res.setHeader('Content-Type', 'application/json')
     if (req.headers.authorization !== `Bearer ${secret}`) { res.writeHead(401); res.end('{}'); return }
+    if (issuesBroken && req.url?.includes('/issues')) { res.writeHead(503); res.end('{}'); return }
     if (broken) { res.writeHead(503); res.end(JSON.stringify({ private: secret })); return }
-    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map(id => ({ id, status: id === ids.developer ? 'running' : 'active', secret })) : [
+    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map(id => ({ id, status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning)) ? 'running' : 'active', secret })) : [
       { id: 'private-parent', assigneeAgentId: ids.orchestrator },
+      { id: 'historical-dev', parentId: 'private-parent', assigneeAgentId: ids.developer, status: 'done', identifier: 'DEV-120', title: 'Completed implementation' },
+      { id: 'historical-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], identifier: 'DEV-121', title: 'Historical QA' },
+      ...(qaDelegated ? [{ id: 'new-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], identifier: 'DEV-124', title: 'Test production handoff', description: 'Exact SHA: 0123456789abcdef0123456789abcdef01234567' }] : []),
+      ...(missedQa ? [{ id: 'missed-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], identifier: 'DEV-125', title: 'Missed during outage' }] : []),
       ...(delegated ? [{ id: 'private-child', parentId: 'private-parent', assigneeAgentId: ids.developer, identifier: 'DEV-123', title: 'Production handoff', secret }] : []),
     ]))
   })
@@ -53,6 +62,27 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await expect(page.locator('.task-bubble')).toHaveText('DEV-123 — Production handoff')
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'returning', { timeout: 5000 })
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
+    qaDelegated = true
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
+    await expect(page.locator('canvas')).toHaveAttribute('data-target', 'browser-qa')
+    await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
+    await expect(page.locator('.task-bubble')).toHaveText('QA DEV-124 @ 0123456 — Test production handoff')
+    await expect(page.locator('.desk-label[data-role="browser-qa"]')).toHaveAttribute('data-activity', 'idle')
+    await page.screenshot({ path: 'test-results/production-qa-bubble.png', fullPage: true })
+    qaRunning = true
+    await expect(page.locator('.desk-label[data-role="browser-qa"]')).toHaveAttribute('data-activity', 'working')
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'returning', { timeout: 5000 })
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
+    await page.waitForTimeout(3200)
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+    issuesBroken = true
+    await expect.poll(async () => (await (await fetch(base + '/api/office-state')).json()).tasks).toBeNull()
+    await page.waitForTimeout(1800)
+    await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+    missedQa = true
+    issuesBroken = false
+    await page.waitForTimeout(3200)
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
     await page.reload()
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     await page.waitForTimeout(1700)
