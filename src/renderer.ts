@@ -1,3 +1,5 @@
+import { handoffPose, handoffQueue, type Handoff } from './handoff'
+import { CharacterState, Direction } from './vendor/pixel-agents/office/types'
 import type { VisualState } from './state'
 import { WIDTH, HEIGHT, tiles, furniture, sceneCharacters } from './scene'
 import { renderTileGrid, renderScene } from './vendor/pixel-agents/office/engine/renderer'
@@ -7,11 +9,33 @@ import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState) {
   let state = initialState
   let elapsed = 0
+  let active: { event: Handoff; seconds: number } | undefined
+  const queue = handoffQueue()
+  const bubble = document.createElement('div')
+  bubble.className = 'task-bubble'
+  bubble.setAttribute('role', 'status')
+  bubble.hidden = true
+  canvas.parentElement!.append(bubble)
+  canvas.dataset.handoff = 'rest'
+  function updateHandoff() {
+    if (document.hidden) queue.clear()
+    const next = queue.advance(performance.now(), motion.matches)
+    if (next && next.event !== active?.event) {
+      bubble.textContent = `${next.event.taskId} — ${next.event.title}`
+    }
+    active = next
+    const phase = active ? (motion.matches ? 'bubble' : handoffPose(active.seconds).phase) : 'rest'
+    if (canvas.dataset.handoff !== phase) canvas.dataset.handoff = phase
+    const hidden = phase !== 'bubble'
+    if (bubble.hidden !== hidden) bubble.hidden = hidden
+  }
+  const onVisibility = () => { if (document.hidden) { queue.clear(); updateHandoff() } }
+  document.addEventListener('visibilitychange', onVisibility)
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
   canvas.width = WIDTH * 3
   canvas.height = HEIGHT * 3
   const stop = startGameLoop(canvas, {
-    update: dt => { elapsed += dt },
+    update: dt => { elapsed += dt; updateHandoff() },
     render: ctx => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       renderTileGrid(ctx, tiles, 0, 0, 3)
@@ -25,7 +49,16 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       }
       ctx.fillStyle = '#72887f'
       for (const y of [76, 172]) ctx.fillRect(54 * 3, y * 3, 268 * 3, 65 * 3)
-      renderScene(ctx, furniture, sceneCharacters(state, elapsed, motion.matches), 0, 0, 3, null, null)
+      const characters = sceneCharacters(state, elapsed, motion.matches)
+      if (active && !motion.matches) {
+        const pose = handoffPose(active.seconds)
+        const visitor = characters[0]
+        visitor.x = pose.x; visitor.y = pose.y
+        visitor.state = pose.phase === 'bubble' ? CharacterState.IDLE : CharacterState.WALK
+        visitor.dir = pose.phase === 'bubble' ? Direction.RIGHT : pose.dx ? (pose.dx > 0 ? Direction.RIGHT : Direction.LEFT) : (pose.dy > 0 ? Direction.DOWN : Direction.UP)
+        visitor.frame = Math.floor(elapsed / 0.15) % 4
+      }
+      renderScene(ctx, furniture, characters, 0, 0, 3, null, null)
       for (const agent of state) {
         const x = (agent.col * 16 + 8) * 3
         const y = (agent.row * 16 + 8) * 3
@@ -35,5 +68,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       }
     },
   })
-  return { setState: (next: VisualState) => { state = next }, destroy: stop }
+  return { setState: (next: VisualState) => { state = next }, handoff: (event: Handoff) => { if (!document.hidden) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }

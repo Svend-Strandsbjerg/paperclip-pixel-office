@@ -65,3 +65,7 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 @media (max-width: 480px) { .topbar { height: 66px; }.brand { gap: 7px; font-size: 10px; letter-spacing: 1px; }.brand-divider { margin: 0 2px; }.brand-sub { font-size: 10px; }.source { font-size: 8px; padding: 6px; letter-spacing: 0; }main { padding-top: 30px; }.intro { margin-bottom: 24px; }.desk-label { font-size: 8px; }.desk-label .activity { display: none; }.scene-footer { font-size: 8px; padding: 12px; }.roster { column-gap: 12px; padding: 0 15px; }.roster li { gap: 8px; }h3 { font-size: 11px; }.presence { display: none; }.avatar { width: 28px; }.mode-buttons { width: 100%; }button { flex: 1; padding: 10px 8px; }.demo-bar { gap: 12px; }footer { font-size: 8px; } }
 
 [hidden] { display: none !important; }
+
+.task-bubble { position: absolute; z-index: 3; left: 40%; top: 5%; width: 55%; box-sizing: border-box; padding: 10px 12px; border: 2px solid #38554f; border-radius: 8px; background: #fffdf0; color: #243c36; font-size: clamp(11px, 1.5vw, 15px); line-height: 1.4; overflow-wrap: anywhere; box-shadow: 0 3px 0 #38554f33; pointer-events: none; }
+.task-bubble[hidden] { display: none; }
+@media (max-width: 600px) { .task-bubble { left: 3%; top: 1%; width: 94%; padding: 5px 8px; line-height: 1.2; } }
