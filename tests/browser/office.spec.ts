@@ -263,3 +263,38 @@ for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on m
   await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
   expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
 })
+
+for (const target of ['browser-qa', 'developer'] as const) {
+  for (const reducedMotion of [false, true]) test(`320px long-title ${target} handoff keeps every desk readable, reduced motion ${reducedMotion}`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 740 })
+    await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
+    const task = { taskId: 'DEV-124', title: 'W'.repeat(80), target, ...(reducedMotion && target === 'browser-qa' ? { sha: '0123456789abcdef0123456789abcdef01234567' } : {}) }
+    let delegated = false
+    await page.route('**/api/office-state', route => route.fulfill({ json: {
+      mode: 'live', snapshot: { orchestrator: 'idle', developer: 'idle', 'browser-qa': 'idle', reviewer: 'idle' }, tasks: delegated ? [task] : [],
+    } }))
+    await page.goto('/')
+    await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+    delegated = true
+    const canvas = page.locator('canvas')
+    if (!reducedMotion) await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
+    const bubble = page.locator('.task-bubble')
+    await expect(bubble).toBeVisible({ timeout: 6000 })
+    await expect(bubble).toContainText(task.title)
+    const box = (await bubble.boundingBox())!
+    const scene = (await page.locator('.scene').boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(scene.x)
+    expect(box.x + box.width).toBeLessThanOrEqual(scene.x + scene.width)
+    for (const label of await page.locator('.desk-label').all()) {
+      await expect(label).toBeVisible()
+      const desk = (await label.boundingBox())!
+      // Include the bubble's three-pixel shadow, not just its border box.
+      expect(box.y + box.height + 3 <= desk.y || desk.y + desk.height <= box.y ||
+        box.x + box.width <= desk.x || desk.x + desk.width <= box.x).toBe(true)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+    await page.screenshot({ path: `test-results/long-title-${target}-${reducedMotion}.png`, fullPage: true })
+    await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
+    await expect(bubble).toBeHidden()
+  })
+}

@@ -68,3 +68,13 @@ Verification:
 - No fresh organic QA assignment occurred during that observation. Fresh transition verification therefore uses controlled upstream HTTP responses through `npm run start` → bridge → polling → renderer, rather than claiming an organically observed delegation. No tasks or assignments were created for testing.
 
 The initial Chromium run was terminated with exit 143 after 11 passing tests and before the production test finished. Its test-owned servers were stopped, and the complete suite was rerun with two workers. No production deployment or sandbox configuration was changed. The complete two-worker rerun passed all 12 Chromium tests in 1.7 minutes. `git diff --check` passed. Exact PR head is recorded on DEV-64 and its pull-request work product.
+
+## DEV-66: narrow-screen long-title desk-label overlap
+
+At widths up to 600px, handoff bubbles now occupy a content-sized grid row above the canvas. The canvas and its permanent label overlay share the next row, so wrapped text cannot cover any desk identity. Desktop positioning and the shared handoff engine are unchanged. The row appears only while the bubble is visible.
+
+Four new Chromium cases trigger fresh live-response handoffs at 320×740 with an 80-character wide-glyph title, covering Developer and Browser QA in normal and reduced motion. They check every label for rectangle separation (including the bubble shadow), horizontal containment, no page overflow, and eventual return to rest. QA covers omitted and present SHA. The normal-motion QA regression failed against the original CSS before the fix. The resulting QA screenshot was visually inspected: the full title and all four desk identities are readable.
+
+An initial complete browser run passed 15 cases; the final Developer reduced-motion fixture was incorrectly supplied a QA-only SHA and was correctly rejected by the payload validator. The fixture was corrected before rerunning the complete suite. No payload validation or handoff logic was changed.
+
+Final verification: `npm test` passed all 40 unit/integration tests; `npm run build` passed TypeScript and the production build; `PLAYWRIGHT_BROWSERS_PATH=/srv/agent-platform/playwright-browsers npm run test:browser -- --workers=2` passed the complete 16-test Chromium suite in 2.2 minutes; `git diff --check` passed. The production Chromium test starts the actual Node server and verifies `/health` returns HTTP 200 with exactly `{"status":"ok"}`, alongside both routes, GET-only bridge access, outage/recovery, and reload. Fresh handoffs use controlled upstream responses; no organic Paperclip delegation or deployment is claimed. Final PR head is recorded on DEV-66 and PR #6 after push.

@@ -71,3 +71,11 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 @media (max-width: 600px) { .task-bubble { left: 3%; top: 1%; width: 94%; padding: 5px 8px; line-height: 1.2; } }
 
 .task-bubble[data-target="browser-qa"] { left: 3%; top: 34%; width: 94%; }
+
+/* Wrapped handoff text gets its own row on small screens, clear of every desk. */
+@media (max-width: 600px) {
+  .scene { display: grid; }
+  .scene canvas, .scene .labels { grid-area: 2 / 1; }
+  .scene .labels { position: relative; }
+  .scene .task-bubble { position: relative; grid-area: 1 / 1; left: auto; top: auto; width: auto; margin: 8px; }
+}
