@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { handoffTracker, handoffPose, HANDOFF_SECONDS, demoHandoff } from '../src/handoff'
+import { handoffQueue, MAX_WAIT_MS, SEEN_LIMIT, handoffTracker, handoffPose, HANDOFF_SECONDS, demoHandoff } from '../src/handoff'
 import { mapTasks } from '../server/office-state'
 import { parseSnapshot } from '../src/provider'
 import { demoSnapshot } from '../src/state'
@@ -42,4 +42,46 @@ test('browser rejects unbounded or internal task identifiers', () => {
   for (const task of [{ taskId: 'internal-uuid', title: 'Title' }, { taskId: 'DEV-1', title: 'x'.repeat(81) }]) {
     assert.throws(() => parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle'), tasks: [task] }))
   }
+})
+
+test('bounded queue keeps the newest two waiting events and displays them sequentially', () => {
+  const queue = handoffQueue()
+  const event = (n: number) => ({ ...demoHandoff, taskId: `DEV-${n}` })
+  queue.push(event(1), 0)
+  assert.equal(queue.advance(0, false)?.event.taskId, 'DEV-1')
+  for (let n = 2; n <= 1000; n++) queue.push(event(n), 0)
+  assert.equal(queue.advance(11000, false)?.event.taskId, 'DEV-999')
+  // The remaining waiting item is stale before the next slot opens.
+  assert.equal(queue.advance(22000, false), undefined)
+  queue.push(event(1001), 22001)
+  assert.equal(queue.advance(22001, true)?.event.taskId, 'DEV-1001')
+  assert.equal(queue.advance(25001, true), undefined)
+})
+test('stale frames and hidden-tab clearing never replay queued handoffs', () => {
+  const queue = handoffQueue()
+  queue.push(demoHandoff, 0)
+  assert.equal(queue.advance(MAX_WAIT_MS, false), undefined)
+  queue.push(demoHandoff, 13000)
+  assert.ok(queue.advance(13000, false))
+  queue.push(demoHandoff, 13001)
+  assert.equal(queue.advance(60000, false), undefined)
+  queue.push(demoHandoff, 60001)
+  queue.clear()
+  assert.equal(queue.advance(60002, false), undefined)
+})
+test('dedup memory saturates quietly without evicting and replaying historical IDs', () => {
+  const track = handoffTracker()
+  const tasks = Array.from({ length: SEEN_LIMIT }, (_, i) => ({ taskId: `DEV-${i}`, title: 'Task' }))
+  assert.deepEqual(track(tasks), [])
+  assert.deepEqual(track([]), [])
+  assert.deepEqual(track([tasks[0]]), [])
+  assert.deepEqual(track([{ taskId: 'DEV-10001', title: 'Beyond capacity' }]), [])
+  track(null)
+  assert.deepEqual(track([tasks[0]]), [])
+  assert.deepEqual(track([{ taskId: 'DEV-10002', title: 'Still quiet' }]), [])
+})
+test('malformed unrelated issues do not suppress valid tasks; blank titles have a fallback', () => {
+  assert.deepEqual(mapTasks([null, {}, { id: 'unrelated', title: null }, parent, child], ids), [{ taskId: 'DEV-36', title: child.title }])
+  assert.deepEqual(mapTasks([parent, { ...child, title: null }], ids), [])
+  assert.equal(mapTasks([parent, { ...child, title: '\x00\n\t' }], ids)[0].title, 'Untitled task')
 })

@@ -2,14 +2,25 @@
 export type Task = { taskId: string; title: string }
 export type Handoff = Task & { source: 'orchestrator'; target: 'developer' }
 export const demoHandoff: Handoff = { source: 'orchestrator', target: 'developer', taskId: 'DEMO-1', title: 'Build the next office feature' }
+export const SEEN_LIMIT = 10000
 export function handoffTracker() {
   let previous: Set<string> | undefined
   const seen = new Set<string>()
+  let saturated = false
   return (tasks: Task[] | null): Handoff[] => {
     if (tasks === null) { previous = undefined; return [] }
+    if (saturated) return []
     const current = new Set(tasks.map(t => t.taskId))
     const events = previous ? tasks.filter(t => !previous!.has(t.taskId) && !seen.has(t.taskId)).map(t => ({ ...t, source: 'orchestrator' as const, target: 'developer' as const })) : []
-    for (const id of current) seen.add(id)
+    for (const id of current) {
+      if (!seen.has(id) && seen.size === SEEN_LIMIT) {
+        // Fail quiet rather than evicting IDs and replaying old assignments.
+        saturated = true
+        previous = undefined
+        return []
+      }
+      seen.add(id)
+    }
     previous = current
     return events
   }
@@ -38,4 +49,26 @@ export function handoffPose(seconds: number) {
     remaining -= length
   }
   throw new Error('Invalid route')
+}
+
+// Keep recent context without replaying a backlog. Times are monotonic milliseconds.
+export const PENDING_LIMIT = 2
+export const MAX_WAIT_MS = 12000
+export function handoffQueue() {
+  let pending: { event: Handoff; received: number }[] = []
+  let active: { event: Handoff; started: number } | undefined
+  return {
+    push(event: Handoff, now: number) {
+      pending.push({ event, received: now })
+      if (pending.length > PENDING_LIMIT) pending.shift()
+    },
+    clear() { pending = []; active = undefined },
+    advance(now: number, reducedMotion: boolean) {
+      pending = pending.filter(item => now - item.received < MAX_WAIT_MS)
+      const duration = (reducedMotion ? BUBBLE_SECONDS : HANDOFF_SECONDS) * 1000
+      if (active && now - active.started >= duration) active = undefined
+      if (!active && pending.length) active = { event: pending.shift()!.event, started: now }
+      return active ? { event: active.event, seconds: (now - active.started) / 1000 } : undefined
+    },
+  }
 }

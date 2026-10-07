@@ -5,11 +5,12 @@ import type { Task } from '../src/handoff.ts'
 
 /** Parent must belong to the configured Orchestrator; unrelated work is excluded. */
 export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
-  if (!Array.isArray(input) || input.some(i => !i || typeof i.id !== 'string' || typeof i.title !== 'string')) throw new Error('Invalid issues')
-  const parents = new Set(input.filter(i => i.assigneeAgentId === ids.orchestrator).map(i => i.id))
-  return input.filter(i => parents.has(i.parentId) && i.assigneeAgentId === ids.developer &&
+  if (!Array.isArray(input)) throw new Error('Invalid issues')
+  const items = input.filter(i => i && typeof i.id === 'string')
+  const parents = new Set(items.filter(i => i.assigneeAgentId === ids.orchestrator).map(i => i.id))
+  return items.filter(i => typeof i.title === 'string' && parents.has(i.parentId) && i.assigneeAgentId === ids.developer &&
     typeof i.identifier === 'string' && /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(i.identifier) && i.identifier.length <= 32)
-    .map(i => ({ taskId: i.identifier, title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) }))
+    .map(i => ({ taskId: i.identifier, title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task' }))
     .sort((a, b) => a.taskId.localeCompare(b.taskId))
 }
 
@@ -56,7 +57,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
       if (config.mode === 'live') {
         const upstream = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/agents`, {
           method: 'GET', headers: { Authorization: `Bearer ${config.key}` },
-          signal: AbortSignal.timeout(5000), redirect: 'error',
+          signal: AbortSignal.timeout(2500), redirect: 'error',
         })
         if (!upstream.ok) throw new Error('Upstream unavailable')
         snapshot = mapAgents(await upstream.json(), config.ids!)
@@ -65,7 +66,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
         try {
           const issues = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/issues?limit=${ISSUE_LIMIT}`, {
             method: 'GET', headers: { Authorization: `Bearer ${config.key}` },
-            signal: AbortSignal.timeout(1500), redirect: 'error',
+            signal: AbortSignal.timeout(4000), redirect: 'error',
           })
           if (!issues.ok) {
             issueFailure = `HTTP ${issues.status}`

@@ -106,7 +106,8 @@ test('demo handoff uses outbound, readable bubble and return without changing ac
   const textMutations = await page.locator('.task-bubble').evaluate(async bubble => {
     let count = 0
     const observer = new MutationObserver(records => { count += records.length })
-    observer.observe(bubble, { childList: true, characterData: true, subtree: true })
+    observer.observe(bubble, { childList: true, characterData: true, subtree: true, attributes: true })
+    observer.observe(document.querySelector('canvas')!, { attributes: true, attributeFilter: ['data-handoff'] })
     await new Promise<void>(resolve => {
       let frames = 0
       const tick = () => { if (++frames === 30) resolve(); else requestAnimationFrame(tick) }
@@ -160,4 +161,79 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
   await page.waitForTimeout(1700)
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
   expect(errors).toEqual([])
+})
+
+test('reduced-motion handoff shows task text while the canvas stays static', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/')
+  const canvas = page.locator('canvas')
+  await expect(canvas).toHaveAttribute('data-handoff', 'rest')
+  const pixels = () => canvas.evaluate(node => node.toDataURL())
+  const before = await pixels()
+  await page.getByRole('button', { name: 'Demo handoff', exact: true }).click()
+  await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
+  await expect(page.locator('.task-bubble')).toBeVisible()
+  await expect(page.locator('.task-bubble')).toContainText('DEMO-1')
+  for (let i = 0; i < 5; i++) {
+    await page.waitForTimeout(300)
+    expect(await pixels()).toBe(before)
+  }
+  await expect(canvas).toHaveAttribute('data-handoff', 'rest')
+  expect(await pixels()).toBe(before)
+})
+
+test('live burst is bounded and discarded tasks never replay on subsequent polls', async ({ page }) => {
+  let tasks: { taskId: string; title: string }[] = []
+  await page.route('**/api/office-state', route => route.fulfill({ json: { mode: 'live', snapshot: { orchestrator: 'idle', developer: 'idle', 'browser-qa': 'idle', reviewer: 'idle' }, tasks } }))
+  await page.goto('/')
+  await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+  tasks = Array.from({ length: 5 }, (_, i) => ({ taskId: `DEV-${i + 1}`, title: `Task ${i + 1}` }))
+  const bubble = page.locator('.task-bubble')
+  await expect(bubble).toHaveText('DEV-4 — Task 4')
+  await expect(bubble).toBeVisible({ timeout: 6000 })
+  await expect(bubble).toHaveText('DEV-5 — Task 5', { timeout: 10000 })
+  await expect(bubble).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 10000 })
+  await page.waitForTimeout(1700)
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+})
+
+test('hidden polling drops handoffs; a long frame gap expires active and waiting work', async ({ page }) => {
+  let tasks: { taskId: string; title: string }[] = []
+  let polls = 0
+  await page.route('**/api/office-state', route => {
+    polls++
+    return route.fulfill({ json: { mode: 'live', snapshot: { orchestrator: 'idle', developer: 'idle', 'browser-qa': 'idle', reviewer: 'idle' }, tasks } })
+  })
+  await page.goto('/')
+  await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+  tasks = [{ taskId: 'DEV-1', title: 'Before hiding' }, { taskId: 'DEV-2', title: 'Waiting' }]
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
+  // Headless Chromium does not reliably hide tabs. Exercise the real visibility
+  // listener using a controlled visibility getter while network polling continues.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  tasks.push({ taskId: 'DEV-3', title: 'While hidden' })
+  const before = polls
+  await expect.poll(() => polls).toBeGreaterThan(before)
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await page.waitForTimeout(1700)
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+  await expect(page.locator('.task-bubble')).toBeHidden()
+  tasks.push({ taskId: 'DEV-4', title: 'Fresh after return' }, { taskId: 'DEV-5', title: 'Pending before suspension' })
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
+  // Advance the monotonic clock independently of animation dt, as with a
+  // suspended frame loop; both the active and waiting events must expire.
+  await page.evaluate(() => {
+    const now = performance.now.bind(performance)
+    performance.now = () => now() + 60000
+  })
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+  await page.waitForTimeout(1700)
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
 })

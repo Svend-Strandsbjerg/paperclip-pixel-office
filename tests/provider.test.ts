@@ -102,3 +102,18 @@ test('issue failures log safe server diagnostics while preserving live agent sta
   }
   assert.equal(warn.mock.calls.length, cases.length)
 })
+
+test('issue read tolerates latency beyond the former 1.5-second budget', async () => {
+  await withBridge(env, async (url, options) => {
+    if (new URL(String(url)).pathname.endsWith('/agents')) return Response.json(agents)
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, 1700)
+      options?.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('Timed out')) }, { once: true })
+    })
+    return Response.json([])
+  }, async url => {
+    const data = await (await fetch(url)).json()
+    assert.deepEqual(data.tasks, [])
+    assert.equal(data.snapshot.developer, 'working')
+  })
+})
