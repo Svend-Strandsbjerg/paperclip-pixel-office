@@ -1,3 +1,4 @@
+import { demoHandoff } from './handoff'
 import './style.css'
 import { pollOffice } from './provider'
 import { demoSnapshot, mapVisualState, ROLES, type DemoMode } from './state'
@@ -18,7 +19,7 @@ root.innerHTML = `
       </section>
       <aside class="team-panel" aria-labelledby="team-title"><div class="team-heading"><p class="eyebrow">IN THE OFFICE</p><h2 id="team-title">The team <span>4</span></h2></div><ul class="roster"></ul><div class="demo-note"><span class="note-icon" aria-hidden="true">◇</span><div><strong>A window into the work</strong><p>Connecting to office state. Paperclip stays in control; this office only visualizes activity.</p></div></div></aside>
     </div>
-    <section class="demo-bar" aria-label="Demo controls"><div><span class="eyebrow">TRY A SCENE</span><p>See the office change pace.</p></div><div class="mode-buttons" role="group" aria-label="Demo activity"><button data-mode="mixed" aria-pressed="true">Mixed activity</button><button data-mode="working" aria-pressed="false">All working</button><button data-mode="idle" aria-pressed="false">All idle</button></div><p id="activity-summary" role="status" aria-live="polite"></p></section>
+    <section class="demo-bar" aria-label="Demo controls"><div><span class="eyebrow">TRY A SCENE</span><p>See the office change pace.</p></div><div class="mode-buttons" role="group" aria-label="Demo activity"><button data-mode="mixed" aria-pressed="true">Mixed activity</button><button data-mode="working" aria-pressed="false">All working</button><button data-mode="idle" aria-pressed="false">All idle</button><button class="demo-handoff">Demo handoff</button></div><p id="activity-summary" role="status" aria-live="polite"></p></section>
     <footer><span>PIXEL OFFICE <span class="footer-slash">/</span> FOUNDATION 01</span><details><summary>Credits &amp; license</summary><p>Rendering and code-defined sprites adapted from <a href="https://github.com/rolandal/pixel-agents-standalone">Pixel Agents Standalone</a>, based on <a href="https://github.com/pixel-agents-hq/pixel-agents">Pixel Agents</a>.</p><pre class="license"></pre></details></footer>
   </main>`
 root.querySelector('.license')!.textContent = license
@@ -62,6 +63,7 @@ function showDemo(mode: DemoMode) {
 root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => {
   button.addEventListener('click', () => showDemo(button.dataset.mode as DemoMode))
 })
+root.querySelector('.demo-handoff')!.addEventListener('click', () => { if (isDemo) office.handoff(demoHandoff) })
 const controls = root.querySelector<HTMLElement>('.mode-buttons')!
 controls.hidden = true
 root.querySelector('.demo-bar .eyebrow')!.textContent = 'OFFICE ACTIVITY'
@@ -80,5 +82,5 @@ const stopPolling = pollOffice(data => {
 }, () => {
   root.querySelector('.source')!.textContent = 'DISCONNECTED'
   root.querySelector('.demo-note p')!.textContent = hasState ? 'Connection lost. Showing the last received activity.' : 'Office state unavailable. No live activity has been received.'
-})
+}, event => office.handoff(event))
 if (import.meta.hot) import.meta.hot.dispose(() => { stopPolling(); office.destroy() })

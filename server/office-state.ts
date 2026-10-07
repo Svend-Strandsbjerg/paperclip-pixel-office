@@ -1,6 +1,18 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ROLES, demoSnapshot, type Activity, type RoleId } from '../src/state.ts'
 
+import type { Task } from '../src/handoff.ts'
+
+/** Parent must belong to the configured Orchestrator; unrelated work is excluded. */
+export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
+  if (!Array.isArray(input) || input.some(i => !i || typeof i.id !== 'string' || typeof i.title !== 'string')) throw new Error('Invalid issues')
+  const parents = new Set(input.filter(i => i.assigneeAgentId === ids.orchestrator).map(i => i.id))
+  return input.filter(i => parents.has(i.parentId) && i.assigneeAgentId === ids.developer &&
+    typeof i.identifier === 'string' && /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(i.identifier) && i.identifier.length <= 32)
+    .map(i => ({ taskId: i.identifier, title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) }))
+    .sort((a, b) => a.taskId.localeCompare(b.taskId))
+}
+
 type Config = { mode: 'live' | 'demo'; url?: string; company?: string; key?: string; ids?: Record<RoleId, string> }
 export function readConfig(env: NodeJS.ProcessEnv): Config {
   if (env.OFFICE_MODE === 'demo') return { mode: 'demo' }
@@ -37,6 +49,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
     try {
       const config = readConfig(env)
       let snapshot = demoSnapshot('mixed')
+      let tasks: Task[] | null = null
       if (config.mode === 'live') {
         const upstream = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/agents`, {
           method: 'GET', headers: { Authorization: `Bearer ${config.key}` },
@@ -44,8 +57,17 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
         })
         if (!upstream.ok) throw new Error('Upstream unavailable')
         snapshot = mapAgents(await upstream.json(), config.ids!)
+        // Independent failure boundary: issue reads must never hide agent activity.
+        try {
+          const issues = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/issues`, {
+            method: 'GET', headers: { Authorization: `Bearer ${config.key}` },
+            signal: AbortSignal.timeout(1500), redirect: 'error',
+          })
+          if (!issues.ok) throw new Error('Issues unavailable')
+          tasks = mapTasks(await issues.json(), config.ids!)
+        } catch { tasks = null }
       }
-      res.end(JSON.stringify({ mode: config.mode, snapshot }))
+      res.end(JSON.stringify({ mode: config.mode, snapshot, tasks }))
     } catch {
       res.statusCode = 503
       res.end(JSON.stringify({ error: 'Office state unavailable' }))

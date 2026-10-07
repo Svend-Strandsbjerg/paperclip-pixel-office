@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { officeMiddleware, mapAgents, readConfig } from '../server/office-state'
+import { officeMiddleware, mapAgents, readConfig, mapTasks } from '../server/office-state'
 import { parseSnapshot } from '../src/provider'
 import { demoSnapshot } from '../src/state'
 const ids = { orchestrator: 'a', developer: 'b', 'browser-qa': 'c', reviewer: 'd' }
@@ -30,17 +30,17 @@ test('HTTP bridge uses GET with server credentials and returns only minimal stat
   let calls = 0
   await withBridge(env, async (url, options) => {
     calls++
-    assert.equal(url, 'http://paperclip.test/api/companies/company/agents')
+    assert.ok(['http://paperclip.test/api/companies/company/agents', 'http://paperclip.test/api/companies/company/issues'].includes(String(url)))
     assert.equal(options?.method, 'GET')
     assert.equal((options?.headers as Record<string,string>).Authorization, 'Bearer secret')
     assert.equal(options?.redirect, 'error')
-    return Response.json(agents)
+    return Response.json(String(url).endsWith('/issues') ? [] : agents)
   }, async url => {
     const response = await fetch(url)
     assert.equal(response.headers.get('cache-control'), 'no-store')
-    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids) })
+    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), tasks: [] })
     assert.equal((await fetch(url, { method: 'POST' })).status, 405)
-    assert.equal(calls, 1)
+    assert.equal(calls, 2)
   })
 })
 test('configuration, transport, upstream HTTP and schema failures are sanitized', async () => {
@@ -55,10 +55,20 @@ test('configuration, transport, upstream HTTP and schema failures are sanitized'
 })
 test('demo is deterministic, explicitly labeled, and makes no upstream request', async () => {
   await withBridge({ OFFICE_MODE: 'demo' }, async () => { throw new Error('must not fetch') }, async url => {
-    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed') })
+    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed'), tasks: null })
   })
 })
 test('browser validates complete snapshots before updating the renderer', () => {
   assert.deepEqual(parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle') }).snapshot, demoSnapshot('idle'))
   for (const input of [null, {}, { mode: 'live', snapshot: {} }, { mode: 'live', snapshot: { ...demoSnapshot('idle'), developer: 'running' } }]) assert.throws(() => parseSnapshot(input))
+})
+test('issue read failure keeps live agent states and returns a quiet unavailable task snapshot', async () => {
+  await withBridge(env, async url => {
+    if (String(url).endsWith('/issues')) throw new Error('private upstream failure')
+    return Response.json(agents)
+  }, async url => {
+    const response = await fetch(url)
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), tasks: null })
+  })
 })
