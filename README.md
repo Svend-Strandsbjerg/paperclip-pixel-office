@@ -56,9 +56,13 @@ The renderer remains unaware of credentials, APIs and transport. Additional stat
 
 Unit tests cover the exact role roster/coordinates, input normalization, immutable identities, all demo modes, deterministic scene adaptation, typing frames and reduced motion. Browser tests live in `tests/browser/`. Their screenshots are generated under ignored `test-results/` when checks can run. No unverified screenshots are committed.
 
+Provider tests also cover `active`, `error` and `paused` mapping to idle, response minimization, and rejection of incomplete or inherited snapshots. Fake-clock polling tests verify the 1.5-second cadence, no overlapping requests, retention/recovery, timeout, cancellation and demo polling shutdown.
+
 ## Live configuration and operation
 
 Copy `.env.example` to `.env` and fill in server-only values, or supply environment variables (which take precedence). Never prefix secrets with `VITE_`; Vite exposes such variables to browser code. Do not commit `.env` or credentials.
+
+The example contains the persistent company and four agent IDs verified for this project's Paperclip company. These IDs are configuration, not credentials. Supply the actual reachable API URL and a runtime-provided API key. For a different company, replace the company ID and all four agent IDs together. Runtime identity never depends on display names.
 
 - `OFFICE_MODE=live` (default): configuration is required; invalid/missing configuration produces an explicit disconnected UI. There is no automatic demo fallback.
 - `OFFICE_MODE=demo`: no Paperclip request or credentials required; the server returns the fixed mixed fixture. The browser visibly says LOCAL DEMO, stops polling and enables local scene controls.

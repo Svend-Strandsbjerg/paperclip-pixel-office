@@ -2,9 +2,12 @@ import { ROLES, type Activity, type RoleId } from './state'
 export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<RoleId, Activity> }
 export function parseSnapshot(value: unknown): OfficeSnapshot {
   const data = value as OfficeSnapshot | null
-  if (!data || !['live', 'demo'].includes(data.mode) || !data.snapshot ||
+  if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      !Object.hasOwn(data, 'mode') || !Object.hasOwn(data, 'snapshot') ||
+      !['live', 'demo'].includes(data.mode) || !data.snapshot ||
+      typeof data.snapshot !== 'object' || Array.isArray(data.snapshot) ||
       ROLES.some(r => !Object.hasOwn(data.snapshot, r.id) || !['idle', 'working'].includes(data.snapshot[r.id]))) throw new Error('Invalid office state')
-  return data
+  return { mode: data.mode, snapshot: Object.fromEntries(ROLES.map(r => [r.id, data.snapshot[r.id]])) as Record<RoleId, Activity> }
 }
 /** Serial polling: no overlapping requests; retain the last valid state on failure. */
 export function pollOffice(onState: (data: OfficeSnapshot) => void, onFailure: () => void) {

@@ -10,7 +10,7 @@ const agents = Object.values(ids).map((id, i) => ({ id, status: i === 1 ? 'runni
 const env = { PAPERCLIP_API_URL: 'http://paperclip.test', PAPERCLIP_COMPANY_ID: 'company', PAPERCLIP_API_KEY: 'secret', PAPERCLIP_AGENT_ROLES: JSON.stringify(ids) }
 test('stable IDs map running only, ignore names and unknown agents', () => {
   assert.deepEqual(mapAgents([...agents, { id: 'unknown', status: 'running' }], ids), { orchestrator: 'idle', developer: 'working', 'browser-qa': 'idle', reviewer: 'idle' })
-  for (const status of ['idle', 'paused', 'error', 'terminated', 'pending_approval']) assert.equal(mapAgents(agents.map(a => ({ ...a, status })), ids).developer, 'idle')
+  for (const status of ['idle', 'active', 'paused', 'error', 'terminated', 'pending_approval']) assert.equal(mapAgents(agents.map(a => ({ ...a, status })), ids).developer, 'idle')
   for (const input of [{}, [], [...agents, agents[0]], agents.map(a => ({ ...a, status: null }))]) assert.throws(() => mapAgents(input, ids))
 })
 test('configuration requires explicit unique IDs and never defaults to demo', () => {
@@ -61,4 +61,7 @@ test('demo is deterministic, explicitly labeled, and makes no upstream request',
 test('browser validates complete snapshots before updating the renderer', () => {
   assert.deepEqual(parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle') }).snapshot, demoSnapshot('idle'))
   for (const input of [null, {}, { mode: 'live', snapshot: {} }, { mode: 'live', snapshot: { ...demoSnapshot('idle'), developer: 'running' } }]) assert.throws(() => parseSnapshot(input))
+  const valid = { mode: 'live', snapshot: demoSnapshot('idle') }
+  for (const input of [Object.create(valid), { ...valid, snapshot: Object.assign([], valid.snapshot) }, { ...valid, snapshot: Object.create(valid.snapshot) }]) assert.throws(() => parseSnapshot(input))
+  assert.deepEqual(parseSnapshot({ ...valid, secret: 'private', snapshot: { ...valid.snapshot, unknown: 'working' } }), valid)
 })
