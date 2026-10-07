@@ -130,7 +130,7 @@ test('snapshot boundary rejects inherited and non-plain shapes and strips unknow
 test('snapshot boundary preserves tasks while excluding identity and activity overrides', () => {
   const valid = { mode: 'live', snapshot: demoSnapshot('idle') }
   const task = { taskId: 'DEV-1', title: 'Build feature' }
-  assert.deepEqual(parseSnapshot({ ...valid, tasks: [{ ...task, source: 'reviewer', target: 'orchestrator', secret: 'private' }] }), { ...valid, tasks: [task] })
+  assert.deepEqual(parseSnapshot({ ...valid, tasks: [{ ...task, source: 'reviewer', secret: 'private' }] }), { ...valid, tasks: [task] })
   for (const tasks of [null, [], [task]]) assert.deepEqual(parseSnapshot({ ...valid, tasks }), { ...valid, tasks })
   for (const tasks of [{}, [null], [Object.create(task)], [Object.assign([], task)], Array(1),
     [{ ...task, taskId: 'bad' }], [{ ...task, title: 'x'.repeat(81) }]]) assert.throws(() => parseSnapshot({ ...valid, tasks }))

@@ -50,3 +50,31 @@ The new exact PR head is recorded on DEV-39 and its pull-request work product af
 - Background coverage limitation: headless Chromium does not reliably hide tabs on focus changes. The test controls `document.hidden`, dispatches the actual visibility event, and verifies the production listener while polling continues. Separately, it advances the monotonic clock to exercise frame-suspension expiry. This does not claim OS-level tab suspension was reproduced.
 - Real read-only integration: the actual middleware, using runtime credentials and persistent configured role IDs, returned real DEV-42, four agent states and only `taskId,title` task payload fields. Both upstream requests were GET and the issue request used `limit=1000`. No tasks or assignments were created for testing. Newly created real delegation animation remains covered by controlled browser responses, not a newly observed real assignment.
 - `git diff --check`: passed. Exact final PR head is recorded in the DEV-42 comment and pull-request work product after push. Earlier DEV-40/DEV-41 gates are invalidated; the parent Orchestrator owns fresh gates.
+
+## DEV-64: Developer completion → Browser QA
+
+Implementation reuses the existing tracker, bounded queue, animation timing and renderer. The read-only issue snapshot qualifies a Browser QA child only under a configured Orchestrator parent with a completed Developer sibling. Agent idle/working does not participate in qualification. Destination and public task identifier form the dedup key. Browser QA stays at its permanent desk and its activity remains controlled by the agent endpoint.
+
+The server extracts only unambiguous full SHA values from the QA description's explicit exact-target labels, as documented in README. No GitHub query or additional Paperclip endpoint was introduced. Unsupported or absent SHA formats show identifier/title without a hash. One real snapshot contained 10 qualifying historical QA tasks, of which 4 used recognized exact-target labels; the remaining 6 safely omitted SHA.
+
+Verification:
+
+- `npm ci`: passed, no vulnerabilities.
+- `npm run build`: TypeScript and production Vite build passed.
+- `npm test`: all 40 unit/integration tests passed. Includes sibling qualification, absent/unrelated/completed Developer cases, SHA provenance/ambiguity, parser bounds, destination routes and sequential queue, dedup/reload/recovery, server startup and unchanged health.
+- Chromium uses the production Node server, including a controlled HTTP Paperclip upstream. Coverage includes historical QA hydration, Developer handoff regression, a fresh QA task, full outbound/bubble/return, authoritative SHA text, initially idle QA changing only on agent runtime status, repeated-poll silence, issue-only failure with live activity retained, a missed QA task hydrating silently on recovery, reload, GET-only access and browser credential/identity containment.
+- Demo QA tests verify mobile bounds and static canvas under reduced motion, and compare canvas pixels before/at the QA destination/after returning. Screenshots were visually inspected for readable task text and the Orchestrator beside Browser QA.
+- Real read-only runtime: launched `createOfficeServer` on an ephemeral loopback port with runtime credentials and four persistent IDs discovered from the company agents endpoint. `/health` returned exactly `{"status":"ok"}`; `/api/office-state` returned four roles, current DEV-64 and historical QA tasks with only allowlisted visual fields. Real Chromium connected, polled, and reloaded silently with zero console/page errors.
+- No fresh organic QA assignment occurred during that observation. Fresh transition verification therefore uses controlled upstream HTTP responses through `npm run start` → bridge → polling → renderer, rather than claiming an organically observed delegation. No tasks or assignments were created for testing.
+
+The initial Chromium run was terminated with exit 143 after 11 passing tests and before the production test finished. Its test-owned servers were stopped, and the complete suite was rerun with two workers. No production deployment or sandbox configuration was changed. The complete two-worker rerun passed all 12 Chromium tests in 1.7 minutes. `git diff --check` passed. Exact PR head is recorded on DEV-64 and its pull-request work product.
+
+## DEV-66: narrow-screen long-title desk-label overlap
+
+At widths up to 600px, handoff bubbles now occupy a content-sized grid row above the canvas. The canvas and its permanent label overlay share the next row, so wrapped text cannot cover any desk identity. Desktop positioning and the shared handoff engine are unchanged. The row appears only while the bubble is visible.
+
+Four new Chromium cases trigger fresh live-response handoffs at 320×740 with an 80-character wide-glyph title, covering Developer and Browser QA in normal and reduced motion. They check every label for rectangle separation (including the bubble shadow), horizontal containment, no page overflow, and eventual return to rest. QA covers omitted and present SHA. The normal-motion QA regression failed against the original CSS before the fix. The resulting QA screenshot was visually inspected: the full title and all four desk identities are readable.
+
+An initial complete browser run passed 15 cases; the final Developer reduced-motion fixture was incorrectly supplied a QA-only SHA and was correctly rejected by the payload validator. The fixture was corrected before rerunning the complete suite. No payload validation or handoff logic was changed.
+
+Final verification: `npm test` passed all 40 unit/integration tests; `npm run build` passed TypeScript and the production build; `PLAYWRIGHT_BROWSERS_PATH=/srv/agent-platform/playwright-browsers npm run test:browser -- --workers=2` passed the complete 16-test Chromium suite in 2.2 minutes; `git diff --check` passed. The production Chromium test starts the actual Node server and verifies `/health` returns HTTP 200 with exactly `{"status":"ok"}`, alongside both routes, GET-only bridge access, outage/recovery, and reload. Fresh handoffs use controlled upstream responses; no organic Paperclip delegation or deployment is claimed. Final PR head is recorded on DEV-66 and PR #6 after push.

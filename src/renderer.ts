@@ -21,10 +21,12 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     if (document.hidden) queue.clear()
     const next = queue.advance(performance.now(), motion.matches)
     if (next && next.event !== active?.event) {
-      bubble.textContent = `${next.event.taskId} — ${next.event.title}`
+      bubble.textContent = next.event.target === 'browser-qa' ? `QA ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
+      bubble.dataset.target = next.event.target
+      canvas.dataset.target = next.event.target
     }
     active = next
-    const phase = active ? (motion.matches ? 'bubble' : handoffPose(active.seconds).phase) : 'rest'
+    const phase = active ? (motion.matches ? 'bubble' : handoffPose(active.seconds, active.event.target).phase) : 'rest'
     if (canvas.dataset.handoff !== phase) canvas.dataset.handoff = phase
     const hidden = phase !== 'bubble'
     if (bubble.hidden !== hidden) bubble.hidden = hidden
@@ -51,11 +53,11 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       for (const y of [76, 172]) ctx.fillRect(54 * 3, y * 3, 268 * 3, 65 * 3)
       const characters = sceneCharacters(state, elapsed, motion.matches)
       if (active && !motion.matches) {
-        const pose = handoffPose(active.seconds)
+        const pose = handoffPose(active.seconds, active.event.target)
         const visitor = characters[0]
         visitor.x = pose.x; visitor.y = pose.y
         visitor.state = pose.phase === 'bubble' ? CharacterState.IDLE : CharacterState.WALK
-        visitor.dir = pose.phase === 'bubble' ? Direction.RIGHT : pose.dx ? (pose.dx > 0 ? Direction.RIGHT : Direction.LEFT) : (pose.dy > 0 ? Direction.DOWN : Direction.UP)
+        visitor.dir = pose.phase === 'bubble' ? (active.event.target === 'browser-qa' ? Direction.LEFT : Direction.RIGHT) : pose.dx ? (pose.dx > 0 ? Direction.RIGHT : Direction.LEFT) : (pose.dy > 0 ? Direction.DOWN : Direction.UP)
         visitor.frame = Math.floor(elapsed / 0.15) % 4
       }
       renderScene(ctx, furniture, characters, 0, 0, 3, null, null)

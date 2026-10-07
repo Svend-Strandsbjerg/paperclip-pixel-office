@@ -85,3 +85,44 @@ test('malformed unrelated issues do not suppress valid tasks; blank titles have 
   assert.deepEqual(mapTasks([parent, { ...child, title: null }], ids), [])
   assert.equal(mapTasks([parent, { ...child, title: '\x00\n\t' }], ids)[0].title, 'Untitled task')
 })
+
+test('QA requires a completed Developer sibling and an Orchestrator parent, never idle state', () => {
+  const qa = { ...child, id: 'qa', identifier: 'DEV-65', assigneeAgentId: ids['browser-qa'], description: 'Exact SHA: `0123456789abcdef0123456789abcdef01234567`' }
+  assert.deepEqual(mapTasks([parent, qa], ids), [])
+  assert.equal(mapTasks([parent, child, qa], ids).length, 1)
+  const tasks = mapTasks([parent, { ...child, status: 'done' }, qa], ids)
+  assert.deepEqual(tasks[1], { taskId: 'DEV-65', title: child.title, target: 'browser-qa', sha: '0123456789abcdef0123456789abcdef01234567' })
+  assert.equal(mapTasks([{ ...parent, assigneeAgentId: ids.reviewer }, { ...child, status: 'done' }, qa], ids).length, 0)
+  assert.equal(mapTasks([parent, { ...child, status: 'done', parentId: 'other' }, qa], ids).length, 0)
+  const track = handoffTracker()
+  assert.deepEqual(track(tasks.slice(0, 1)), [])
+  assert.deepEqual(track(tasks), [{ ...tasks[1], source: 'orchestrator' }])
+  assert.deepEqual(track(tasks), [])
+  assert.deepEqual(track(tasks.map(t => ({ ...t, title: 'Edited', sha: undefined }))), [])
+  assert.equal(mapTasks([parent, { ...child, status: 'done' }, { ...qa, description: 'No exact target supplied' }], ids)[1].sha, undefined)
+  assert.deepEqual(handoffTracker()(tasks), [])
+  track(null)
+  assert.deepEqual(track([...tasks, { ...tasks[1], taskId: 'DEV-66' }]), [])
+})
+
+test('SHA comes only from an unambiguous full labeled QA assignment value', async () => {
+  const { qaSha } = await import('../server/office-state')
+  const sha = '0123456789abcdef0123456789abcdef01234567'
+  assert.equal(qaSha(`Exact SHA: ${sha}`), sha)
+  assert.equal(qaSha(`- Required tested SHA: \`${sha}\``), sha)
+  for (const value of [undefined, `Commit ${sha}`, 'Exact SHA: abc1234', `Exact SHA: ${sha}\nExact SHA: ${'a'.repeat(40)}`]) assert.equal(qaSha(value), undefined)
+  for (const task of [{ target: 'reviewer' }, { target: 'browser-qa', sha: 'abc1234' }, { target: 'developer', sha }]) {
+    assert.throws(() => parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle'), tasks: [{ taskId: 'DEV-1', title: 'Test', ...task }] }))
+  }
+})
+
+test('shared route and queue visit Developer then QA and return to the permanent desk', () => {
+  assert.deepEqual([handoffPose(4, 'browser-qa').x, handoffPose(4, 'browser-qa').y], [120, 200])
+  assert.deepEqual([handoffPose(HANDOFF_SECONDS, 'browser-qa').x, handoffPose(HANDOFF_SECONDS, 'browser-qa').y], [104, 104])
+  const queue = handoffQueue()
+  queue.push(demoHandoff, 0)
+  queue.push({ ...demoHandoff, target: 'browser-qa' }, 1)
+  assert.equal(queue.advance(1, false)?.event.target, 'developer')
+  assert.equal(queue.advance(11001, false)?.event.target, 'browser-qa')
+  assert.equal(queue.advance(22001, false), undefined)
+})
