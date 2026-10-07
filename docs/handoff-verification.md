@@ -26,3 +26,15 @@ Result: passed. Real Paperclip issue reads confirmed DEV-36 is a Developer child
 A newly created/reassigned real delegation was **not** verified end to end: no independent Orchestrator assignment occurred while observing, and no task creation/reassignment was performed for testing. Controlled browser responses verify the new-delegation → animation → bounded text → return sequence, while real reads verify bridge compatibility, correct identity/state and reload behavior. The application never writes to Paperclip.
 
 Screenshots are generated in ignored `test-results/`; they are local verification artifacts, not committed source. Final PR number and exact head SHA are recorded in the DEV-36 task comment and pull-request work product after push.
+
+## DEV-39 reviewer fixes
+
+- Task-bubble text is assigned once when each event becomes active. A Chromium MutationObserver regression measures zero child/text mutations across 30 animation frames while the status bubble is visible.
+- Issue reads explicitly request `limit=1000`. The real Paperclip endpoint accepted this bound; invalid-limit validation reported a maximum of 1000. A full page is conservatively unavailable (`tasks: null`), avoiding incomplete parent/child comparisons. Server warnings distinguish request/timeouts, HTTP status, invalid responses and the reached limit without including raw errors or issue contents. Agent activity remains available.
+- `npm test`: 18 passed, including parent/child selection beyond a simulated default page and safe diagnostics/failure isolation for transport, HTTP, JSON, schema and full-page failures.
+- `npm run build`: TypeScript and Vite production build passed.
+- `PLAYWRIGHT_BROWSERS_PATH=/srv/agent-platform/playwright-browsers npm run test:browser`: all 6 Chromium tests passed, including the live-region mutation regression and existing animation/live-state behavior.
+- `git diff --check`: passed.
+- Real integration: `NODE_USE_ENV_PROXY=1 node --import tsx --input-type=module` started the actual middleware on an ephemeral loopback HTTP server using runtime credentials and persistent role IDs obtained from company agents. Verified upstream methods were GET, issue query was exactly `limit=1000`, the response selected real DEV-39, all four agent states were present, and task fields were limited to `taskId,title`. No test task or assignment was created. This verifies real reads; new live delegation animation remains covered by controlled Chromium responses.
+
+The new exact PR head is recorded on DEV-39 and its pull-request work product after push. Earlier review/Browser QA approvals do not apply to the new commit; the parent Orchestrator owns fresh gates.

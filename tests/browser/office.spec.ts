@@ -102,6 +102,22 @@ test('demo handoff uses outbound, readable bubble and return without changing ac
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
   await expect(page.locator('.task-bubble')).toHaveText('DEMO-1 — Build the next office feature')
   await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
+  // Identical textContent assignments still replace text nodes and retrigger a live region.
+  const textMutations = await page.locator('.task-bubble').evaluate(async bubble => {
+    let count = 0
+    const observer = new MutationObserver(records => { count += records.length })
+    observer.observe(bubble, { childList: true, characterData: true, subtree: true })
+    await new Promise<void>(resolve => {
+      let frames = 0
+      const tick = () => { if (++frames === 30) resolve(); else requestAnimationFrame(tick) }
+      requestAnimationFrame(tick)
+    })
+    count += observer.takeRecords().length
+    observer.disconnect()
+    return count
+  })
+  expect(textMutations).toBe(0)
+  await expect(page.locator('.task-bubble')).toBeVisible()
   await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'idle')
   const bubbleBox = (await page.locator('.task-bubble').boundingBox())!
   const developerLabel = (await page.locator('.desk-label[data-role="developer"]').boundingBox())!

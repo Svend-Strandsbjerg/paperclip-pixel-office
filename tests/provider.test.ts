@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { officeMiddleware, mapAgents, readConfig, mapTasks } from '../server/office-state'
+import { officeMiddleware, mapAgents, readConfig, ISSUE_LIMIT } from '../server/office-state'
 import { parseSnapshot } from '../src/provider'
 import { demoSnapshot } from '../src/state'
 const ids = { orchestrator: 'a', developer: 'b', 'browser-qa': 'c', reviewer: 'd' }
@@ -30,11 +30,11 @@ test('HTTP bridge uses GET with server credentials and returns only minimal stat
   let calls = 0
   await withBridge(env, async (url, options) => {
     calls++
-    assert.ok(['http://paperclip.test/api/companies/company/agents', 'http://paperclip.test/api/companies/company/issues'].includes(String(url)))
+    assert.ok(['http://paperclip.test/api/companies/company/agents', 'http://paperclip.test/api/companies/company/issues?limit=1000'].includes(String(url)))
     assert.equal(options?.method, 'GET')
     assert.equal((options?.headers as Record<string,string>).Authorization, 'Bearer secret')
     assert.equal(options?.redirect, 'error')
-    return Response.json(String(url).endsWith('/issues') ? [] : agents)
+    return Response.json(new URL(String(url)).pathname.endsWith('/issues') ? [] : agents)
   }, async url => {
     const response = await fetch(url)
     assert.equal(response.headers.get('cache-control'), 'no-store')
@@ -62,13 +62,43 @@ test('browser validates complete snapshots before updating the renderer', () => 
   assert.deepEqual(parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle') }).snapshot, demoSnapshot('idle'))
   for (const input of [null, {}, { mode: 'live', snapshot: {} }, { mode: 'live', snapshot: { ...demoSnapshot('idle'), developer: 'running' } }]) assert.throws(() => parseSnapshot(input))
 })
-test('issue read failure keeps live agent states and returns a quiet unavailable task snapshot', async () => {
-  await withBridge(env, async url => {
-    if (String(url).endsWith('/issues')) throw new Error('private upstream failure')
-    return Response.json(agents)
+test('bounded issue read includes parent and child beyond a default page', async () => {
+  const issues = Array.from({ length: 200 }, (_, i) => ({ id: `other-${i}`, title: 'Other issue' }))
+  const related = [
+    { id: 'parent', title: 'Parent', assigneeAgentId: ids.orchestrator },
+    { id: 'child', title: 'New task', identifier: 'DEV-39', parentId: 'parent', assigneeAgentId: ids.developer },
+  ]
+  await withBridge(env, async (url, options) => {
+    assert.equal(options?.method, 'GET')
+    const request = new URL(String(url))
+    if (request.pathname.endsWith('/agents')) return Response.json(agents)
+    assert.equal(request.searchParams.get('limit'), String(ISSUE_LIMIT))
+    return Response.json([...issues, ...related].slice(0, Number(request.searchParams.get('limit') || 200)))
   }, async url => {
-    const response = await fetch(url)
-    assert.equal(response.status, 200)
-    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), tasks: null })
+    assert.deepEqual((await (await fetch(url)).json()).tasks, [{ taskId: 'DEV-39', title: 'New task' }])
   })
+})
+test('issue failures log safe server diagnostics while preserving live agent states', async t => {
+  const warn = t.mock.method(console, 'warn', () => {})
+  const cases: [() => Promise<Response>, string][] = [
+    [async () => { throw new Error('secret private raw upstream') }, 'request failed or timed out'],
+    [async () => new Response('secret private', { status: 403 }), 'HTTP 403'],
+    [async () => new Response('secret private'), 'invalid issue response'],
+    [async () => Response.json({ secret: 'private' }), 'invalid issue response'],
+    [async () => Response.json(Array.from({ length: ISSUE_LIMIT }, (_, i) => ({ id: String(i), title: 'private' }))), 'issue limit 1000 reached'],
+  ]
+  for (const [issueResponse, diagnostic] of cases) {
+    await withBridge(env, async url => {
+      if (new URL(String(url)).pathname.endsWith('/issues')) return issueResponse()
+      return Response.json(agents)
+    }, async url => {
+      const response = await fetch(url)
+      assert.equal(response.status, 200)
+      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), tasks: null })
+    })
+    const message = warn.mock.calls.at(-1)!.arguments.join(' ')
+    assert.ok(message.includes(diagnostic))
+    assert.doesNotMatch(message, /secret|private|Bearer|paperclip.test/)
+  }
+  assert.equal(warn.mock.calls.length, cases.length)
 })

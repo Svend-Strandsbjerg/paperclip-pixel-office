@@ -18,7 +18,10 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   canvas.parentElement!.append(bubble)
   canvas.dataset.handoff = 'rest'
   function updateHandoff(dt: number) {
-    if (!active && pending.length) active = { event: pending.shift()!, seconds: 0 }
+    if (!active && pending.length) {
+      active = { event: pending.shift()!, seconds: 0 }
+      bubble.textContent = `${active.event.taskId} — ${active.event.title}`
+    }
     if (active) {
       active.seconds += dt
       if (active.seconds >= HANDOFF_SECONDS) active = undefined
@@ -26,7 +29,6 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     const pose = active ? handoffPose(active.seconds) : undefined
     canvas.dataset.handoff = pose?.phase ?? 'rest'
     bubble.hidden = pose?.phase !== 'bubble'
-    if (active) bubble.textContent = `${active.event.taskId} — ${active.event.title}`
   }
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
   canvas.width = WIDTH * 3

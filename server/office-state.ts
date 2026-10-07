@@ -13,6 +13,9 @@ export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
     .sort((a, b) => a.taskId.localeCompare(b.taskId))
 }
 
+// Paperclip supports at most 1000 issues per list read. A full page may be truncated.
+export const ISSUE_LIMIT = 1000
+
 type Config = { mode: 'live' | 'demo'; url?: string; company?: string; key?: string; ids?: Record<RoleId, string> }
 export function readConfig(env: NodeJS.ProcessEnv): Config {
   if (env.OFFICE_MODE === 'demo') return { mode: 'demo' }
@@ -58,14 +61,28 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
         if (!upstream.ok) throw new Error('Upstream unavailable')
         snapshot = mapAgents(await upstream.json(), config.ids!)
         // Independent failure boundary: issue reads must never hide agent activity.
+        let issueFailure = 'request failed or timed out'
         try {
-          const issues = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/issues`, {
+          const issues = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/issues?limit=${ISSUE_LIMIT}`, {
             method: 'GET', headers: { Authorization: `Bearer ${config.key}` },
             signal: AbortSignal.timeout(1500), redirect: 'error',
           })
-          if (!issues.ok) throw new Error('Issues unavailable')
-          tasks = mapTasks(await issues.json(), config.ids!)
-        } catch { tasks = null }
+          if (!issues.ok) {
+            issueFailure = `HTTP ${issues.status}`
+            throw new Error('Issues unavailable')
+          }
+          issueFailure = 'invalid issue response'
+          const input: unknown = await issues.json()
+          if (Array.isArray(input) && input.length >= ISSUE_LIMIT) {
+            issueFailure = `issue limit ${ISSUE_LIMIT} reached; snapshot may be incomplete`
+            throw new Error('Incomplete issues')
+          }
+          tasks = mapTasks(input, config.ids!)
+        } catch {
+          tasks = null
+          // Fixed categories only: no credentials, issue data, URLs or raw upstream errors.
+          console.warn(`[office-state] Issue read failed: ${issueFailure}; task handoffs unavailable, agent activity retained`)
+        }
       }
       res.end(JSON.stringify({ mode: config.mode, snapshot, tasks }))
     } catch {
