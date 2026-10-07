@@ -10,7 +10,7 @@ const agents = Object.values(ids).map((id, i) => ({ id, status: i === 1 ? 'runni
 const env = { PAPERCLIP_API_URL: 'http://paperclip.test', PAPERCLIP_COMPANY_ID: 'company', PAPERCLIP_API_KEY: 'secret', PAPERCLIP_AGENT_ROLES: JSON.stringify(ids) }
 test('stable IDs map running only, ignore names and unknown agents', () => {
   assert.deepEqual(mapAgents([...agents, { id: 'unknown', status: 'running' }], ids), { orchestrator: 'idle', developer: 'working', 'browser-qa': 'idle', reviewer: 'idle' })
-  for (const status of ['idle', 'paused', 'error', 'terminated', 'pending_approval']) assert.equal(mapAgents(agents.map(a => ({ ...a, status })), ids).developer, 'idle')
+  for (const status of ['idle', 'active', 'paused', 'error', 'terminated', 'pending_approval']) assert.equal(mapAgents(agents.map(a => ({ ...a, status })), ids).developer, 'idle')
   for (const input of [{}, [], [...agents, agents[0]], agents.map(a => ({ ...a, status: null }))]) assert.throws(() => mapAgents(input, ids))
 })
 test('configuration requires explicit unique IDs and never defaults to demo', () => {
@@ -116,4 +116,22 @@ test('issue read tolerates latency beyond the former 1.5-second budget', async (
     assert.deepEqual(data.tasks, [])
     assert.equal(data.snapshot.developer, 'working')
   })
+})
+
+test('snapshot boundary rejects inherited and non-plain shapes and strips unknown fields', () => {
+  const valid = { mode: 'live', snapshot: demoSnapshot('idle') }
+  for (const input of [Object.create(valid), Object.assign(new Date(), valid),
+    { ...valid, snapshot: Object.assign([], valid.snapshot) },
+    { ...valid, snapshot: Object.create(valid.snapshot) },
+    { ...valid, snapshot: Object.assign(new Date(), valid.snapshot) }]) assert.throws(() => parseSnapshot(input))
+  assert.deepEqual(parseSnapshot({ ...valid, secret: 'private', snapshot: { ...valid.snapshot, unknown: 'working' } }), valid)
+})
+
+test('snapshot boundary preserves tasks while excluding identity and activity overrides', () => {
+  const valid = { mode: 'live', snapshot: demoSnapshot('idle') }
+  const task = { taskId: 'DEV-1', title: 'Build feature' }
+  assert.deepEqual(parseSnapshot({ ...valid, tasks: [{ ...task, source: 'reviewer', target: 'orchestrator', secret: 'private' }] }), { ...valid, tasks: [task] })
+  for (const tasks of [null, [], [task]]) assert.deepEqual(parseSnapshot({ ...valid, tasks }), { ...valid, tasks })
+  for (const tasks of [{}, [null], [Object.create(task)], [Object.assign([], task)], Array(1),
+    [{ ...task, taskId: 'bad' }], [{ ...task, title: 'x'.repeat(81) }]]) assert.throws(() => parseSnapshot({ ...valid, tasks }))
 })
