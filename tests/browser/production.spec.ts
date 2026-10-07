@@ -3,6 +3,31 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { spawn } from 'node:child_process'
 
+test('production demo controls fit and remain usable at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 })
+  await page.goto('/')
+  await expect(page.locator('.source')).toContainText('DEMO')
+  const controls = page.getByRole('group', { name: 'Demo activity' })
+  await expect(controls).toBeVisible()
+  await controls.scrollIntoViewIfNeeded()
+  const buttons = controls.getByRole('button')
+  await expect(buttons).toHaveCount(6)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+  for (const button of await buttons.all()) {
+    await expect(button).toBeInViewport({ ratio: 1 })
+    const box = (await button.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(320)
+    await button.click({ trial: true })
+  }
+  await page.getByRole('button', { name: 'All working', exact: true }).click()
+  await expect(page.locator('#activity-summary')).toHaveText('4 working · 0 idle')
+  await page.getByRole('button', { name: 'Demo Reviewer handoff', exact: true }).click()
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
+  await expect(page.locator('canvas')).toHaveAttribute('data-target', 'reviewer')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+})
+
 test('production start bridges live HTTP reads, handoff, outage/recovery and reload without leaking credentials', async ({ page }) => {
   test.setTimeout(90000)
   const ids = { orchestrator: 'private-orchestrator', developer: 'private-developer', 'browser-qa': 'private-qa', reviewer: 'private-reviewer' }
