@@ -11,6 +11,8 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
   let delegated = false
   let qaDelegated = false
   let qaRunning = false
+  let reviewerDelegated = false
+  let reviewerRunning = false
   let issuesBroken = false
   let missedQa = false
   const upstreamMethods: string[] = []
@@ -20,10 +22,13 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     if (req.headers.authorization !== `Bearer ${secret}`) { res.writeHead(401); res.end('{}'); return }
     if (issuesBroken && req.url?.includes('/issues')) { res.writeHead(503); res.end('{}'); return }
     if (broken) { res.writeHead(503); res.end(JSON.stringify({ private: secret })); return }
-    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i] }, avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1', status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning)) ? 'running' : 'active', secret })) : [
+    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i] }, avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1', status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning) || (id === ids.reviewer && reviewerRunning)) ? 'running' : 'active', secret })) : [
       { id: 'private-parent', assigneeAgentId: ids.orchestrator },
       { id: 'historical-dev', parentId: 'private-parent', assigneeAgentId: ids.developer, status: 'done', identifier: 'DEV-120', title: 'Completed implementation' },
-      { id: 'historical-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], identifier: 'DEV-121', title: 'Historical QA' },
+      { id: 'historical-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], status: 'done', identifier: 'DEV-121', title: 'Historical QA' },
+      { id: 'historical-review', parentId: 'private-parent', assigneeAgentId: ids.reviewer, identifier: 'DEV-122', title: 'Historical review' },
+      ...(reviewerDelegated ? [{ id: 'new-review', parentId: 'private-parent', assigneeAgentId: ids.reviewer, identifier: 'DEV-126', title: 'Review production handoff', description: 'Exact PR head SHA: 0123456789abcdef0123456789abcdef01234567' }] : []),
+      ...(missedQa ? [{ id: 'missed-review', parentId: 'private-parent', assigneeAgentId: ids.reviewer, identifier: 'DEV-127', title: 'Review missed during outage' }] : []),
       ...(qaDelegated ? [{ id: 'new-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], identifier: 'DEV-124', title: 'Test production handoff', description: 'Exact SHA: 0123456789abcdef0123456789abcdef01234567' }] : []),
       ...(missedQa ? [{ id: 'missed-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], identifier: 'DEV-125', title: 'Missed during outage' }] : []),
       ...(delegated ? [{ id: 'private-child', parentId: 'private-parent', assigneeAgentId: ids.developer, identifier: 'DEV-123', title: 'Production handoff', secret }] : []),
@@ -74,6 +79,25 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await page.screenshot({ path: 'test-results/production-qa-bubble.png', fullPage: true })
     qaRunning = true
     await expect(page.locator('.desk-label[data-role="browser-qa"]')).toHaveAttribute('data-activity', 'working')
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'returning', { timeout: 5000 })
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
+    await page.waitForTimeout(3200)
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+    reviewerDelegated = true
+    await expect(page.getByRole('button', { name: 'Demo Reviewer handoff', exact: true })).toBeHidden()
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
+    await expect(page.locator('canvas')).toHaveAttribute('data-target', 'reviewer')
+    await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
+    await expect(page.locator('.task-bubble')).toHaveText('Review DEV-126 @ 0123456 — Review production handoff')
+    await expect(page.locator('.desk-label[data-role="reviewer"]')).toHaveAttribute('data-activity', 'idle')
+    const box = (await page.locator('.task-bubble').boundingBox())!
+    for (const label of await page.locator('.desk-label').all()) {
+      const desk = (await label.boundingBox())!
+      expect(box.y + box.height + 3 <= desk.y || desk.y + desk.height <= box.y || box.x + box.width <= desk.x || desk.x + desk.width <= box.x).toBe(true)
+    }
+    await page.screenshot({ path: 'test-results/production-reviewer-bubble.png', fullPage: true })
+    reviewerRunning = true
+    await expect(page.locator('.desk-label[data-role="reviewer"]')).toHaveAttribute('data-activity', 'working')
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'returning', { timeout: 5000 })
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
     await page.waitForTimeout(3200)

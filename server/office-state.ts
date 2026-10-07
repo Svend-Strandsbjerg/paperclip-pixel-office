@@ -4,7 +4,7 @@ import { ROLES, demoSnapshot, type Activity, type RoleId } from '../src/state.ts
 
 import type { Task } from '../src/handoff.ts'
 
-/** Only explicit exact-SHA labels in the authoritative QA assignment are used.
+/** Only explicit exact-SHA labels in the authoritative QA/review assignment are used.
  * Conflicting labels, abbreviated hashes and incidental commit mentions stay absent. */
 export function qaSha(description: unknown): string | undefined {
   if (typeof description !== 'string') return undefined
@@ -18,15 +18,19 @@ export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
   const items = input.filter(i => i && typeof i.id === 'string')
   const parents = new Set(items.filter(i => i.assigneeAgentId === ids.orchestrator).map(i => i.id))
   const completedFlows = new Set(items.filter(i => i.assigneeAgentId === ids.developer && i.status === 'done' && parents.has(i.parentId)).map(i => i.parentId))
-  return items.filter(i => typeof i.title === 'string' && parents.has(i.parentId) && (i.assigneeAgentId === ids.developer || (i.assigneeAgentId === ids['browser-qa'] && completedFlows.has(i.parentId))) &&
+  // A Reviewer assignment is the Orchestrator's workflow decision; completion is
+  // checked directly, but no verdict is inferred from free text or agent activity.
+  const reviewedFlows = new Set(items.filter(i => i.assigneeAgentId === ids['browser-qa'] && i.status === 'done' && parents.has(i.parentId)).map(i => i.parentId))
+  return items.filter(i => typeof i.title === 'string' && parents.has(i.parentId) && (i.assigneeAgentId === ids.developer || (i.assigneeAgentId === ids['browser-qa'] && completedFlows.has(i.parentId)) || (i.assigneeAgentId === ids.reviewer && reviewedFlows.has(i.parentId))) &&
     typeof i.identifier === 'string' && /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(i.identifier) && i.identifier.length <= 32)
     .map(i => {
       const qa = i.assigneeAgentId === ids['browser-qa']
-      const sha = qa ? qaSha(i.description) : undefined
+      const reviewer = i.assigneeAgentId === ids.reviewer
+      const sha = qa || reviewer ? qaSha(i.description) : undefined
       return {
         taskId: i.identifier,
         title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task',
-        ...(qa ? { target: 'browser-qa' as const } : {}),
+        ...(qa ? { target: 'browser-qa' as const } : reviewer ? { target: 'reviewer' as const } : {}),
         ...(sha ? { sha } : {}),
       }
     })

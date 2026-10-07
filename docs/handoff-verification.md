@@ -78,3 +78,38 @@ Four new Chromium cases trigger fresh live-response handoffs at 320×740 with an
 An initial complete browser run passed 15 cases; the final Developer reduced-motion fixture was incorrectly supplied a QA-only SHA and was correctly rejected by the payload validator. The fixture was corrected before rerunning the complete suite. No payload validation or handoff logic was changed.
 
 Final verification: `npm test` passed all 40 unit/integration tests; `npm run build` passed TypeScript and the production build; `PLAYWRIGHT_BROWSERS_PATH=/srv/agent-platform/playwright-browsers npm run test:browser -- --workers=2` passed the complete 16-test Chromium suite in 2.2 minutes; `git diff --check` passed. The production Chromium test starts the actual Node server and verifies `/health` returns HTTP 200 with exactly `{"status":"ok"}`, alongside both routes, GET-only bridge access, outage/recovery, and reload. Fresh handoffs use controlled upstream responses; no organic Paperclip delegation or deployment is claimed. Final PR head is recorded on DEV-66 and PR #6 after push.
+
+## DEV-71: Browser QA completion → Reviewer handoff
+
+Reviewer assignments reuse the existing snapshot tracker, bounded sequential queue,
+Orchestrator sprite, timing and renderer. A Reviewer child qualifies only under the
+configured Orchestrator parent with a completed Browser QA sibling. The assignment
+is the Orchestrator's delegation signal; QA `done` is checked directly but is not
+itself interpreted as an APPROVE verdict. No verified structured verdict is
+available in the issue-list contract used here. Runtime/idle state never supplies
+approval evidence. Reviewer activity remains independently driven by live agents.
+Only the Reviewer's own unambiguous labeled full SHA can appear in its bubble.
+
+Coverage adds Reviewer qualification and SHA isolation, silent hydration/restart/
+outage recovery, exactly-once detection, route endpoints and shared queue behavior.
+Chromium exercises the actual production server against controlled HTTP upstream
+responses, covering historical reviews, new delegation, outbound/bubble/return,
+independent Reviewer activity, repeated polls, outage recovery, reload, GET-only
+access, credential/internal-ID containment and `/health`. Demo and 320×740 cases
+cover normal/reduced motion, long titles, optional SHA and every desk label.
+
+Real-read limitation: this continuation could not reach either runtime-provided
+Paperclip API URL (connection refused), including through Node's environment proxy
+support. It therefore could not inspect a fresh real issue response or observe an
+organic Reviewer delegation. The controlled upstream tests exercise the real
+bridge → polling → renderer path; they are not claimed as organic workflow proof.
+No Paperclip test tasks, assignments or downstream review tasks were created.
+
+Final verification: `npm test` passed all 43 unit/integration tests; `npm run
+build` passed TypeScript and Vite; `PLAYWRIGHT_BROWSERS_PATH=/srv/agent-platform/playwright-browsers
+npm run test:browser -- --workers=2` passed all 20 Chromium tests in 2.8 minutes.
+The production runtime case starts `npm run start` and verifies loopback `/health`
+returns exactly `{"status":"ok"}`. Desktop Reviewer and 320px long-title screenshots
+were visually inspected; desk identities remain readable. `git diff --check`
+passed. Exact PR head and handoff metadata are recorded in the GitHub PR/task
+handoff; Paperclip control-plane writes require restored runtime API connectivity.

@@ -111,7 +111,7 @@ test('SHA comes only from an unambiguous full labeled QA assignment value', asyn
   assert.equal(qaSha(`Exact SHA: ${sha}`), sha)
   assert.equal(qaSha(`- Required tested SHA: \`${sha}\``), sha)
   for (const value of [undefined, `Commit ${sha}`, 'Exact SHA: abc1234', `Exact SHA: ${sha}\nExact SHA: ${'a'.repeat(40)}`]) assert.equal(qaSha(value), undefined)
-  for (const task of [{ target: 'reviewer' }, { target: 'browser-qa', sha: 'abc1234' }, { target: 'developer', sha }]) {
+  for (const task of [{ target: 'unknown' }, { target: 'browser-qa', sha: 'abc1234' }, { target: 'developer', sha }]) {
     assert.throws(() => parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle'), tasks: [{ taskId: 'DEV-1', title: 'Test', ...task }] }))
   }
 })
@@ -125,4 +125,46 @@ test('shared route and queue visit Developer then QA and return to the permanent
   assert.equal(queue.advance(1, false)?.event.target, 'developer')
   assert.equal(queue.advance(11001, false)?.event.target, 'browser-qa')
   assert.equal(queue.advance(22001, false), undefined)
+})
+
+test('Reviewer uses completed QA in the same Orchestrator flow and only its own exact SHA', () => {
+  const qa = { ...child, id: 'qa', assigneeAgentId: ids['browser-qa'], status: 'done', description: `Exact SHA: ${'a'.repeat(40)}` }
+  const review = { ...child, id: 'review', identifier: 'DEV-71', assigneeAgentId: ids.reviewer, description: `Exact PR head SHA: ${'b'.repeat(40)}` }
+  const mapped = (items: unknown[]) => mapTasks(items, ids).filter(t => t.target === 'reviewer')
+  assert.deepEqual(mapped([parent, qa, review]), [{ taskId: 'DEV-71', title: child.title, target: 'reviewer', sha: 'b'.repeat(40) }])
+  for (const changed of [{ status: 'in_progress' }, { parentId: 'other' }, { assigneeAgentId: ids.developer }]) assert.deepEqual(mapped([parent, { ...qa, ...changed }, review]), [])
+  assert.deepEqual(mapped([{ ...parent, assigneeAgentId: ids.developer }, qa, review]), [])
+  assert.equal(mapped([parent, qa, { ...review, description: 'Review abc1234' }])[0].sha, undefined)
+  assert.equal(mapped([parent, qa, { ...review, description: `Exact SHA: ${'a'.repeat(40)}\nExact SHA: ${'b'.repeat(40)}` }])[0].sha, undefined)
+  assert.deepEqual(parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle'), tasks: mapped([parent, qa, review]) }).tasks, mapped([parent, qa, review]))
+})
+
+test('Reviewer hydration, dedup, removal/reappearance, restart and outage recovery stay silent', () => {
+  const track = handoffTracker()
+  const old = { taskId: 'DEV-1', title: 'Historical review', target: 'reviewer' as const }
+  const fresh = { ...old, taskId: 'DEV-2' }
+  assert.deepEqual(track([old]), [])
+  assert.deepEqual(track([old, fresh]), [{ ...fresh, source: 'orchestrator' }])
+  assert.deepEqual(track([{ ...fresh, title: 'Edited' }]), [])
+  assert.deepEqual(track([old, fresh]), [])
+  assert.deepEqual(handoffTracker()([old, fresh]), [])
+  track(null)
+  const missed = { ...old, taskId: 'DEV-3' }
+  assert.deepEqual(track([old, fresh, missed]), [])
+  assert.deepEqual(track([old, fresh, missed]), [])
+  assert.equal(track([old, fresh, missed, { ...old, taskId: 'DEV-4' }]).length, 1)
+})
+
+test('Reviewer shares the sequential queue and returns precisely to the Orchestrator desk', () => {
+  assert.deepEqual([handoffPose(0, 'reviewer').x, handoffPose(0, 'reviewer').y], [104, 104])
+  assert.deepEqual([handoffPose(4, 'reviewer').x, handoffPose(4, 'reviewer').y], [264, 200])
+  assert.equal(handoffPose(6, 'reviewer').phase, 'bubble')
+  assert.equal(handoffPose(8, 'reviewer').phase, 'returning')
+  assert.deepEqual([handoffPose(HANDOFF_SECONDS, 'reviewer').x, handoffPose(HANDOFF_SECONDS, 'reviewer').y], [104, 104])
+  const queue = handoffQueue()
+  queue.push({ ...demoHandoff, target: 'browser-qa' }, 0)
+  assert.equal(queue.advance(0, false)?.event.target, 'browser-qa')
+  queue.push({ ...demoHandoff, target: 'reviewer' }, 1)
+  assert.equal(queue.advance(11000, false)?.event.target, 'reviewer')
+  assert.equal(queue.advance(22000, false), undefined)
 })
