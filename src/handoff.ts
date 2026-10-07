@@ -1,9 +1,10 @@
 /** Visual-only payload: no Paperclip identities or activity overrides. */
-export type Destination = 'developer' | 'browser-qa'
+export type Destination = 'developer' | 'browser-qa' | 'reviewer'
 export type Task = { taskId: string; title: string; target?: Destination; sha?: string }
 export type Handoff = Task & { source: 'orchestrator'; target: Destination }
 export const demoHandoff: Handoff = { source: 'orchestrator', target: 'developer', taskId: 'DEMO-1', title: 'Build the next office feature' }
 export const demoQaHandoff: Handoff = { source: 'orchestrator', target: 'browser-qa', taskId: 'DEMO-2', title: 'Test the implementation', sha: 'abc1234abc1234abc1234abc1234abc1234abc1234a' }
+export const demoReviewerHandoff: Handoff = { source: 'orchestrator', target: 'reviewer', taskId: 'DEMO-3', title: 'Review the implementation', sha: 'abc1234abc1234abc1234abc1234abc1234abc1234a' }
 export const SEEN_LIMIT = 10000
 export function handoffTracker() {
   let previous: Set<string> | undefined
@@ -29,8 +30,8 @@ export function handoffTracker() {
   }
 }
 
-// Both destinations share timing and WALK frames; routes stay in the open aisles.
-const routes = { developer: [[6, 6], [6, 5], [16, 5], [16, 6]], 'browser-qa': [[6, 6], [8, 6], [8, 12], [7, 12]] } as const
+// All destinations share timing and WALK frames; routes stay in the open aisles.
+const routes = { developer: [[6, 6], [6, 5], [16, 5], [16, 6]], 'browser-qa': [[6, 6], [8, 6], [8, 12], [7, 12]], reviewer: [[6, 6], [8, 6], [8, 12], [16, 12]] } as const
 export const WALK_SECONDS = 4
 export const BUBBLE_SECONDS = 3
 export const HANDOFF_SECONDS = WALK_SECONDS * 2 + BUBBLE_SECONDS

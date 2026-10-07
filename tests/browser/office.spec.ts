@@ -264,11 +264,37 @@ for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on m
   expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
 })
 
-for (const target of ['browser-qa', 'developer'] as const) {
+for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounded on mobile, reduced motion ${reducedMotion}`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
+  await page.goto('/')
+  await expect(page.locator('.source')).toHaveText('LOCAL DEMO')
+  await page.getByRole('button', { name: 'All idle', exact: true }).click()
+  const canvas = page.locator('canvas')
+  const pixels = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  await page.getByRole('button', { name: 'Demo Reviewer handoff', exact: true }).click()
+  if (!reducedMotion) await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
+  await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('.task-bubble')).toHaveText('Review DEMO-3 @ abc1234 — Review the implementation')
+  const bubble = (await page.locator('.task-bubble').boundingBox())!
+  const label = (await page.locator('.desk-label[data-role="reviewer"]').boundingBox())!
+  expect(bubble.y + bubble.height).toBeLessThanOrEqual(label.y)
+  expect(bubble.x).toBeGreaterThanOrEqual(0)
+  expect(bubble.x + bubble.width).toBeLessThanOrEqual(390)
+  await expect(page.locator('.desk-label[data-role="reviewer"]')).toHaveAttribute('data-activity', 'idle')
+  const during = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  if (reducedMotion) expect(during).toBe(pixels)
+  else expect(during).not.toBe(pixels)
+  await page.screenshot({ path: `test-results/reviewer-mobile-${reducedMotion}.png`, fullPage: true })
+  await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
+  expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
+})
+
+for (const target of ['browser-qa', 'developer', 'reviewer'] as const) {
   for (const reducedMotion of [false, true]) test(`320px long-title ${target} handoff keeps every desk readable, reduced motion ${reducedMotion}`, async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 740 })
     await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
-    const task = { taskId: 'DEV-124', title: 'W'.repeat(80), target, ...(reducedMotion && target === 'browser-qa' ? { sha: '0123456789abcdef0123456789abcdef01234567' } : {}) }
+    const task = { taskId: 'DEV-124', title: 'W'.repeat(80), target, ...(reducedMotion && target !== 'developer' ? { sha: '0123456789abcdef0123456789abcdef01234567' } : {}) }
     let delegated = false
     await page.route('**/api/office-state', route => route.fulfill({ json: {
       mode: 'live', snapshot: { orchestrator: 'idle', developer: 'idle', 'browser-qa': 'idle', reviewer: 'idle' }, tasks: delegated ? [task] : [],

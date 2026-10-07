@@ -21,7 +21,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     if (document.hidden) queue.clear()
     const next = queue.advance(performance.now(), motion.matches)
     if (next && next.event !== active?.event) {
-      bubble.textContent = next.event.target === 'browser-qa' ? `QA ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
+      bubble.textContent = next.event.target !== 'developer' ? `${next.event.target === 'reviewer' ? 'Review' : 'QA'} ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
       bubble.dataset.target = next.event.target
       canvas.dataset.target = next.event.target
     }
