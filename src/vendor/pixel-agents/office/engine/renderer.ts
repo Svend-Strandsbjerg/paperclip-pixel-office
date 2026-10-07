@@ -3,7 +3,7 @@
 import { TileType, TILE_SIZE, CharacterState } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites } from '../sprites/spriteData.js'
+import { getCharacterSprites, type CharacterSprites } from '../sprites/spriteData.js'
 import { getCharacterSprite } from './characters.js'
 import { CHARACTER_SITTING_OFFSET_PX, CHARACTER_Z_SORT_OFFSET, OUTLINE_Z_SORT_OFFSET,
   SELECTED_OUTLINE_ALPHA, HOVERED_OUTLINE_ALPHA } from '../../constants.js'
@@ -35,6 +35,7 @@ export function renderScene(
   zoom: number,
   selectedAgentId: number | null,
   hoveredAgentId: number | null,
+  officeSprites?: (character: Character) => CharacterSprites,
 ): void {
   const drawables: ZDrawable[] = []
 
@@ -53,7 +54,7 @@ export function renderScene(
 
   // Characters
   for (const ch of characters) {
-    const sprites = getCharacterSprites(ch.palette, ch.hueShift)
+    const sprites = officeSprites?.(ch) ?? getCharacterSprites(ch.palette, ch.hueShift)
     const spriteData = getCharacterSprite(ch, sprites)
     const cached = getCachedSprite(spriteData, zoom)
     // Sitting offset: shift character down when seated so they visually sit in the chair

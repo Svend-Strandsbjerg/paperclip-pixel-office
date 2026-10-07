@@ -1,3 +1,4 @@
+import { appearancePalette, identityText, type Identity } from '../src/identity.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ROLES, demoSnapshot, type Activity, type RoleId } from '../src/state.ts'
 
@@ -57,6 +58,19 @@ export function mapAgents(input: unknown, ids: Record<RoleId, string>): Record<R
   })) as Record<RoleId, Activity>
 }
 
+export function mapIdentities(input: unknown, ids: Record<RoleId, string>): Record<RoleId, Identity> {
+  mapAgents(input, ids) // Same strict mapping boundary as activity.
+  const agents = input as Record<string, unknown>[]
+  return Object.fromEntries(ROLES.map(role => {
+    const agent = agents.find(a => a.id === ids[role.id])!
+    const paletteId = appearancePalette(agent.appearance)
+    return [role.id, { name: identityText(agent.name, role.name), role: identityText(agent.role, role.name), ...(paletteId ? { paletteId } : {}) }]
+  })) as Record<RoleId, Identity>
+}
+export const demoIdentities = Object.fromEntries(ROLES.map((role, i) => [role.id, {
+  name: role.name, role: role.name, paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i],
+}]))
+
 export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch) {
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (req.url?.split('?')[0] !== '/api/office-state') return next()
@@ -71,6 +85,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
     try {
       const config = readConfig(env)
       let snapshot = demoSnapshot('mixed')
+      let identities: unknown = demoIdentities
       let tasks: Task[] | null = null
       if (config.mode === 'live') {
         const upstream = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/agents`, {
@@ -78,7 +93,9 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
           signal: AbortSignal.timeout(2500), redirect: 'error',
         })
         if (!upstream.ok) throw new Error('Upstream unavailable')
-        snapshot = mapAgents(await upstream.json(), config.ids!)
+        const agents: unknown = await upstream.json()
+        snapshot = mapAgents(agents, config.ids!)
+        identities = mapIdentities(agents, config.ids!)
         // Independent failure boundary: issue reads must never hide agent activity.
         let issueFailure = 'request failed or timed out'
         try {
@@ -103,7 +120,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
           console.warn(`[office-state] Issue read failed: ${issueFailure}; task handoffs unavailable, agent activity retained`)
         }
       }
-      res.end(JSON.stringify({ mode: config.mode, snapshot, tasks }))
+      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, tasks }))
     } catch {
       res.statusCode = 503
       res.end(JSON.stringify({ error: 'Office state unavailable' }))

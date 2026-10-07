@@ -27,3 +27,7 @@ To update the extraction, review the upstream diff and code/asset rights first, 
 ## Package dependencies
 
 There are no runtime package dependencies. Development tools (Vite, TypeScript, tsx, Playwright, Node type definitions) and their transitive dependencies are pinned in `package-lock.json`; their license notices remain in their distributed packages. They are not copied into the office renderer. Run `npm ci` to reproduce the tool installation.
+
+## DEV-75 appearance and studio additions
+
+No new third-party art or code was imported. `src/art.ts` contains original room drawings and uses the already licensed character templates for roster portraits. The extracted sprite resolver accepts a small office palette override and the depth-sorted renderer accepts an optional sprite resolver. Existing attribution/license disclosures are retained. Paperclip palette identifiers are API schema values; the color interpretation is original. Reference evaluation, separate code/art decisions, limitations and non-reuse are documented in [identity/art direction](docs/identity-art-direction.md).

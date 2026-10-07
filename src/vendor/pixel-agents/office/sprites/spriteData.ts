@@ -332,7 +332,7 @@ export const CHARACTER_PALETTES = [
   { skin: '#FFCC99', shirt: '#FF8844', pants: '#443322', hair: '#111111', shoes: '#222222' },
 ] as const
 
-interface CharPalette {
+export interface CharPalette {
   skin: string
   shirt: string
   pants: string
@@ -1050,14 +1050,14 @@ function hueShiftSprites(sprites: CharacterSprites, hueShift: number): Character
   }
 }
 
-export function getCharacterSprites(paletteIndex: number, hueShift = 0): CharacterSprites {
-  const cacheKey = `${paletteIndex}:${hueShift}`
+export function getCharacterSprites(paletteIndex: number, hueShift = 0, officePalette?: CharPalette): CharacterSprites {
+  const cacheKey = `${paletteIndex}:${hueShift}:${officePalette ? JSON.stringify(officePalette) : ""}`
   const cached = spriteCache.get(cacheKey)
   if (cached) return cached
 
   let sprites: CharacterSprites
 
-  if (loadedCharacters) {
+  if (loadedCharacters && !officePalette) {
     // Use pre-colored character sprites directly (no palette swapping)
     const char = loadedCharacters[paletteIndex % loadedCharacters.length]
     const d = char.down
@@ -1087,7 +1087,7 @@ export function getCharacterSprites(paletteIndex: number, hueShift = 0): Charact
     }
   } else {
     // Fallback: use hardcoded templates with palette swapping
-    const pal = CHARACTER_PALETTES[paletteIndex % CHARACTER_PALETTES.length]
+    const pal = officePalette ?? CHARACTER_PALETTES[paletteIndex % CHARACTER_PALETTES.length]
     const r = (t: TemplateCell[][]) => resolveTemplate(t, pal)
     const rf = (t: TemplateCell[][]) => resolveTemplate(flipHorizontal(t), pal)
 

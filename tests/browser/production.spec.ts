@@ -20,7 +20,7 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     if (req.headers.authorization !== `Bearer ${secret}`) { res.writeHead(401); res.end('{}'); return }
     if (issuesBroken && req.url?.includes('/issues')) { res.writeHead(503); res.end('{}'); return }
     if (broken) { res.writeHead(503); res.end(JSON.stringify({ private: secret })); return }
-    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map(id => ({ id, status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning)) ? 'running' : 'active', secret })) : [
+    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i] }, avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1', status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning)) ? 'running' : 'active', secret })) : [
       { id: 'private-parent', assigneeAgentId: ids.orchestrator },
       { id: 'historical-dev', parentId: 'private-parent', assigneeAgentId: ids.developer, status: 'done', identifier: 'DEV-120', title: 'Completed implementation' },
       { id: 'historical-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], identifier: 'DEV-121', title: 'Historical QA' },
@@ -56,6 +56,9 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'working')
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+    await expect(page.locator('.identity-name')).toHaveText(['Morgan · ceo', 'Devon · engineer', 'Quinn · qa', 'Robin · reviewer'])
+    const portraits = await page.locator('.portrait').evaluateAll(images => images.map(i => (i as HTMLImageElement).src))
+    expect(new Set(portraits).size).toBe(4)
     delegated = true
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
     await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
@@ -87,10 +90,12 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     await page.waitForTimeout(1700)
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+    expect(await page.locator('.portrait').evaluateAll(images => images.map(i => (i as HTMLImageElement).src))).toEqual(portraits)
     broken = true
     await expect(page.locator('.source')).toHaveText('DISCONNECTED')
     expect(await (await fetch(base + '/health')).json()).toEqual({ status: 'ok' })
     await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'working')
+    await expect(page.locator('.identity-name').nth(1)).toHaveText('Devon · engineer')
     broken = false
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')

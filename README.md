@@ -37,7 +37,7 @@ Playwright starts and stops its own production Node server on `127.0.0.1:4288`. 
 Paperclip GET agents → server stable-ID/status mapping → GET /api/office-state
   → browser serial polling (or explicit deterministic demo fixtures)
   → mapVisualState() — known role IDs, safe activity normalization
-  → VisualState — exactly four immutable identities + idle/working
+  → VisualState — exactly four fixed desks + projected identity + idle/working
   → sceneCharacters() — fixed palettes, seats and animation frames
   → mountOffice() — adapted Pixel Agents Canvas renderer
 ```
@@ -72,7 +72,7 @@ Copy `.env.example` to `.env` and fill in server-only values, or supply environm
 
 Run `npm run dev`, or `npm run build` followed by `npm run start`. Both load `.env` server-side (production uses Node’s `--env-file-if-exists`; existing environment variables take precedence). The npm startup commands enable Node's environment proxy support and honor existing `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`; no proxy bypass is added. Restart after changing configuration.
 
-Upstream reads are `GET /api/companies/{companyId}/agents` (2.5-second timeout) and `GET /api/companies/{companyId}/issues?limit=1000` (4-second timeout), with redirects rejected. Only the four configured IDs are consumed; unknown agents are ignored. `running` becomes `working`; every other nonempty status becomes `idle`. Missing or duplicate configured agents, malformed responses, transport failures and upstream errors return HTTP 503 with a fixed generic message, never upstream details. The browser receives `{mode, snapshot: {role: "idle" | "working"}, tasks}`, never UUIDs, agent names, credentials or raw upstream data. Responses are not cached; non-GET bridge methods return 405.
+Upstream reads are `GET /api/companies/{companyId}/agents` (2.5-second timeout) and `GET /api/companies/{companyId}/issues?limit=1000` (4-second timeout), with redirects rejected. Only the four configured IDs are consumed; unknown agents are ignored. `running` becomes `working`; every other nonempty status becomes `idle`. Missing or duplicate configured agents, malformed responses, transport failures and upstream errors return HTTP 503 with a fixed generic message, never upstream details. The browser receives `{mode, snapshot: {role: "idle" | "working"}, identities: {role: {name, role, paletteId?}}, tasks}`, never UUIDs, credentials or raw upstream data. Names and roles are bounded plain text; appearance is an allowlisted persisted palette. Responses are not cached; non-GET bridge methods return 405.
 
 Live mode visibly says LIVE · CONNECTED and hides demo controls. Polling updates both Canvas and labels through `mapVisualState()` and `renderer.setState()` without reload. Failures show DISCONNECTED outside the renderer and retain the last valid state, explicitly labeled as last received activity. Before the first valid response, characters are neutral idle and the summary says activity unavailable. Polling continues and automatically restores the connected indication on recovery.
 
@@ -126,3 +126,7 @@ sudo journalctl -u pixel-office.service -n 50 --no-pager
 ```
 
 For operation, use `sudo systemctl stop pixel-office` for a clean SIGTERM shutdown, `sudo systemctl start pixel-office` to start, and `sudo systemctl restart pixel-office` after configuration/release changes. Use `sudo systemctl status pixel-office` and the health check to confirm readiness, then verify LIVE · CONNECTED in the app to confirm upstream connectivity. `Restart=on-failure` restarts unexpected failures after five seconds; an operator stop stays stopped. `sudo systemctl disable --now pixel-office` stops the service and removes boot startup. Installation, enablement and any access/exposure changes remain operator actions, not part of this implementation.
+
+### Paperclip visual identity
+
+The existing four-agent mapping now also reads names, roles and persisted `cap-v1` appearance palettes. Characters, roster portraits and desk accents share each agent's stable palette; desk positions and handoff behavior stay fixed. Demo identities are deterministic and offline. Unsupported/missing appearance uses the local role palette, identified in the roster tooltip. The office interprets Paperclip palettes using its existing animated sprites; it does not display exact avatar PNGs. See [identity and art direction](docs/identity-art-direction.md) for the API projection, references, asset decisions and verification limits.

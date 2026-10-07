@@ -1,8 +1,9 @@
+import { agentSprites, paintStudio } from './art'
 import { handoffPose, handoffQueue, type Handoff } from './handoff'
 import { CharacterState, Direction } from './vendor/pixel-agents/office/types'
 import type { VisualState } from './state'
-import { WIDTH, HEIGHT, tiles, furniture, sceneCharacters } from './scene'
-import { renderTileGrid, renderScene } from './vendor/pixel-agents/office/engine/renderer'
+import { WIDTH, HEIGHT, furniture, sceneCharacters } from './scene'
+import { renderScene } from './vendor/pixel-agents/office/engine/renderer'
 import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 
 /** The renderer receives visual state only. It owns no provider, networking or commands. */
@@ -40,17 +41,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     update: dt => { elapsed += dt; updateHandoff() },
     render: ctx => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      renderTileGrid(ctx, tiles, 0, 0, 3)
-      // Window light and two desk rugs, drawn below the reused depth-sorted scene.
-      ctx.fillStyle = '#bad4cd'
-      for (const x of [74, 252]) {
-        ctx.fillRect(x * 3, 9 * 3, 48 * 3, 19 * 3)
-        ctx.fillStyle = '#587777'
-        ctx.fillRect((x + 23) * 3, 9 * 3, 2 * 3, 19 * 3)
-        ctx.fillStyle = '#bad4cd'
-      }
-      ctx.fillStyle = '#72887f'
-      for (const y of [76, 172]) ctx.fillRect(54 * 3, y * 3, 268 * 3, 65 * 3)
+      paintStudio(ctx, state)
       const characters = sceneCharacters(state, elapsed, motion.matches)
       if (active && !motion.matches) {
         const pose = handoffPose(active.seconds, active.event.target)
@@ -60,7 +51,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
         visitor.dir = pose.phase === 'bubble' ? (active.event.target === 'browser-qa' ? Direction.LEFT : Direction.RIGHT) : pose.dx ? (pose.dx > 0 ? Direction.RIGHT : Direction.LEFT) : (pose.dy > 0 ? Direction.DOWN : Direction.UP)
         visitor.frame = Math.floor(elapsed / 0.15) % 4
       }
-      renderScene(ctx, furniture, characters, 0, 0, 3, null, null)
+      renderScene(ctx, furniture, characters, 0, 0, 3, null, null, character => agentSprites(state[character.id]))
       for (const agent of state) {
         const x = (agent.col * 16 + 8) * 3
         const y = (agent.row * 16 + 8) * 3
