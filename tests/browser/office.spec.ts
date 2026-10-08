@@ -324,3 +324,16 @@ for (const target of ['browser-qa', 'developer', 'reviewer'] as const) {
     await expect(bubble).toBeHidden()
   })
 }
+
+test('demo rework uses the shared movement path and leaves live activity alone', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'All idle', exact: true }).click()
+  await page.getByRole('button', { name: 'Demo Rework handoff', exact: true }).click()
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
+  await expect(page.locator('canvas')).toHaveAttribute('data-target', 'developer')
+  await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
+  await expect(page.locator('.task-bubble')).toHaveText('Rework DEMO-4 @ abc1234 — Address QA findings', { timeout: 6000 })
+  await expect(page.locator('.desk-label[data-activity="idle"]')).toHaveCount(4)
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'returning', { timeout: 5000 })
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
+})

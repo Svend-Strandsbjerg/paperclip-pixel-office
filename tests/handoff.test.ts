@@ -130,7 +130,7 @@ test('shared route and queue visit Developer then QA and return to the permanent
 test('Reviewer uses completed QA in the same Orchestrator flow and only its own exact SHA', () => {
   const qa = { ...child, id: 'qa', assigneeAgentId: ids['browser-qa'], status: 'done', description: `Exact SHA: ${'a'.repeat(40)}` }
   const review = { ...child, id: 'review', identifier: 'DEV-71', assigneeAgentId: ids.reviewer, description: `Exact PR head SHA: ${'b'.repeat(40)}` }
-  const mapped = (items: unknown[]) => mapTasks(items, ids).filter(t => t.target === 'reviewer')
+  const mapped = (items: unknown[]) => mapTasks([...items, { ...child, status: 'done' }], ids).filter(t => t.target === 'reviewer')
   assert.deepEqual(mapped([parent, qa, review]), [{ taskId: 'DEV-71', title: child.title, target: 'reviewer', sha: 'b'.repeat(40) }])
   for (const changed of [{ status: 'in_progress' }, { parentId: 'other' }, { assigneeAgentId: ids.developer }]) assert.deepEqual(mapped([parent, { ...qa, ...changed }, review]), [])
   assert.deepEqual(mapped([{ ...parent, assigneeAgentId: ids.developer }, qa, review]), [])
@@ -168,3 +168,156 @@ test('Reviewer shares the sequential queue and returns precisely to the Orchestr
   assert.equal(queue.advance(11000, false)?.event.target, 'reviewer')
   assert.equal(queue.advance(22000, false), undefined)
 })
+
+const date = (day: number) => `2026-10-${String(day).padStart(2, '0')}T00:00:00.000Z`
+const implementation = { ...child, status: 'done', createdAt: date(1), completedAt: date(2) }
+const completedQa = { ...child, id: 'qa', identifier: 'DEV-37', assigneeAgentId: ids['browser-qa'], status: 'done', createdAt: date(3), completedAt: date(4), description: `Exact SHA: ${'a'.repeat(40)}` }
+const fix = { ...child, id: 'fix', identifier: 'DEV-38', title: 'Address findings', createdAt: date(5), description: `Exact PR head SHA to test: ${'b'.repeat(40)}` }
+const flow = [parent, implementation, completedQa]
+const mappedFix = (items: unknown[]) => mapTasks(items, ids).find(t => t.taskId === fix.identifier)
+
+test('rework requires the ordered complete sibling chain and only uses its own SHA', () => {
+  assert.deepEqual(mappedFix([...flow, fix]), { taskId: 'DEV-38', title: 'Address findings', target: 'developer', context: 'rework', sha: 'b'.repeat(40) })
+  assert.equal(mappedFix([...flow, { ...fix, description: undefined }])?.sha, undefined)
+  assert.equal(mappedFix([...flow, { ...fix, descriptionTruncated: true }])?.sha, undefined)
+  assert.equal(mapTasks([...flow, fix], ids)[0].context, undefined)
+  for (const qaChange of [{ status: 'in_progress' }, { completedAt: null }, { completedAt: date(6) }, { parentId: 'other' }, { createdAt: date(1) }]) {
+    assert.equal(mappedFix([parent, implementation, { ...completedQa, ...qaChange }, fix])?.context, undefined)
+  }
+  for (const change of [{ createdAt: undefined }, { createdAt: 'invalid' }, { createdAt: date(3) }]) {
+    assert.equal(mappedFix([...flow, { ...fix, ...change }])?.context, undefined)
+  }
+  assert.equal(mappedFix([parent, completedQa, fix])?.context, undefined)
+  assert.equal(mappedFix([parent, { ...implementation, status: 'in_progress' }, completedQa, fix])?.context, undefined)
+  assert.equal(mappedFix([...flow, { ...completedQa, id: 'later-qa', createdAt: date(4), status: 'in_progress' }, fix])?.context, undefined)
+  const reviewer = { ...child, id: 'review', assigneeAgentId: ids.reviewer, createdAt: date(4) }
+  assert.equal(mappedFix([...flow, reviewer, fix])?.context, undefined)
+  assert.equal(mappedFix([...flow, { ...reviewer, createdAt: undefined }, fix])?.context, undefined)
+  assert.equal(mappedFix([...flow, { ...reviewer, parentId: 'other' }, fix])?.context, 'rework')
+  assert.deepEqual(mapTasks([parent, completedQa, reviewer], ids), []) // full-chain Reviewer invariant
+})
+
+test('new assignments drive rework once across multiple cycles; status, text and recovery do not', () => {
+  const track = handoffTracker()
+  track(mapTasks([parent, implementation, { ...completedQa, status: 'in_progress' }], ids))
+  assert.deepEqual(track(mapTasks(flow, ids)), []) // QA done alone is silent
+  const tasks = mapTasks([...flow, fix], ids)
+  assert.equal(track(tasks)[0].context, 'rework')
+  assert.deepEqual(track(tasks), [])
+  assert.deepEqual(track(mapTasks(flow, ids)), [])
+  assert.deepEqual(track(tasks), [])
+  assert.deepEqual(track(mapTasks([...flow, { ...fix, title: 'Edited', status: 'done' }], ids)), [])
+  const secondQa = { ...completedQa, id: 'qa2', identifier: 'DEV-39', createdAt: date(7), completedAt: date(8) }
+  const secondFix = { ...fix, id: 'fix2', identifier: 'DEV-40', createdAt: date(9) }
+  const repeated = mapTasks([...flow, { ...fix, status: 'done', completedAt: date(6) }, secondQa, secondFix], ids)
+  assert.deepEqual(track(repeated).map(t => [t.taskId, t.context]), [['DEV-39', undefined], ['DEV-40', 'rework']])
+  assert.deepEqual(handoffTracker()(repeated), [])
+  track(null)
+  const missed = [...repeated, { ...tasks[2], taskId: 'DEV-41' }]
+  assert.deepEqual(track(missed), [])
+  assert.deepEqual(track(missed), [])
+  // Adding structural evidence later cannot replay an already observed assignment.
+  const baseline = handoffTracker()
+  baseline(mapTasks([parent, implementation, fix], ids))
+  assert.equal(baseline(tasks).some(t => t.taskId === fix.identifier), false)
+})
+
+test('explicit SHA labels fail closed including invalid competing labels', async () => {
+  const { qaSha } = await import('../server/office-state')
+  const sha = 'abcdef0123456789abcdef0123456789abcdef01'
+  for (const label of ['Exact SHA', 'Exact SHA to test', 'Exact SHA to review', 'Required exact SHA', 'Required exact SHA to review', 'Exact PR head SHA', 'Exact PR head SHA to test', 'Exact PR head SHA to review']) {
+    assert.equal(qaSha(`${label}: ${sha}`), sha)
+    assert.equal(qaSha(`- ${label}: \`${sha}\``), sha)
+    for (const invalid of ['abc1234', 'unknown', `${sha} or ${'a'.repeat(40)}`, `\`${sha}`]) {
+      assert.equal(qaSha(`Exact SHA: ${sha}\n${label}: ${invalid}`), undefined)
+    }
+  }
+  assert.equal(qaSha(`The Exact SHA: ${sha}`), undefined)
+})
+
+test('rework crosses the browser boundary and shares queue, route and reduced-motion duration', async () => {
+  const { demoReworkHandoff, demoQaHandoff } = await import('../src/handoff')
+  const tasks = mapTasks([...flow, fix], ids)
+  assert.deepEqual(parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle'), tasks }).tasks, tasks)
+  for (const context of ['rejected', true]) {
+    assert.throws(() => parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle'), tasks: [{ ...tasks[2], context }] }))
+  }
+  assert.throws(() => parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle'), tasks: [{ ...tasks[2], target: 'reviewer' }] }))
+  const queue = handoffQueue()
+  queue.push(demoQaHandoff, 0)
+  assert.equal(queue.advance(0, false)?.event.target, 'browser-qa')
+  queue.push(demoReworkHandoff, 1)
+  assert.equal(queue.advance(11000, false)?.event.context, 'rework')
+  assert.deepEqual([handoffPose(11, 'developer').x, handoffPose(11, 'developer').y], [104, 104])
+  assert.equal(queue.advance(22000, false), undefined)
+  queue.push(demoReworkHandoff, 23000)
+  assert.equal(queue.advance(23000, true)?.event.taskId, 'DEMO-4')
+  assert.equal(queue.advance(26000, true), undefined)
+})
+
+test('assignment of a new post-QA child qualifies, without activity or comment parsing', () => {
+  const track = handoffTracker()
+  track(mapTasks([...flow, { ...fix, assigneeAgentId: null }], ids))
+  const events = track(mapTasks([...flow, fix], ids))
+  assert.equal(events.length, 1)
+  assert.equal(events[0].context, 'rework')
+  const statusOnly = handoffTracker()
+  statusOnly(mapTasks([parent, implementation], ids))
+  assert.deepEqual(statusOnly(mapTasks([parent, { ...implementation, comments: 'REQUEST CHANGES', runtimeStatus: 'idle' }], ids)), [])
+  assert.deepEqual(mapTasks([...flow, { ...fix, title: 'x'.repeat(200) + '\n', description: 'Commit ' + 'a'.repeat(40) }], ids).at(-1), {
+    taskId: fix.identifier, title: 'x'.repeat(80), target: 'developer', context: 'rework',
+  })
+})
+
+test('numeric task ordering preserves creation sequence across identifier digit boundaries', () => {
+  assert.deepEqual(mapTasks([parent, { ...child, identifier: 'DEV-100' }, { ...child, id: 'earlier', identifier: 'DEV-99' }], ids).map(t => t.taskId), ['DEV-99', 'DEV-100'])
+})
+
+
+test('truncated QA and Reviewer descriptions retain available exact SHA; rework omits it', () => {
+  const review = { ...child, id: 'review', identifier: 'DEV-71', assigneeAgentId: ids.reviewer,
+    description: `Required exact SHA to review: ${'c'.repeat(40)}`, descriptionTruncated: true }
+  const tasks = mapTasks([...flow.filter(t => t.id !== completedQa.id),
+    { ...completedQa, descriptionTruncated: true }, review], ids)
+  assert.equal(tasks.find(t => t.taskId === completedQa.identifier)?.sha, 'a'.repeat(40))
+  assert.equal(tasks.find(t => t.taskId === review.identifier)?.sha, 'c'.repeat(40))
+  for (const task of [completedQa, review]) {
+    const invalid = { ...task, descriptionTruncated: true,
+      description: `Exact SHA: ${'a'.repeat(40)}\nRequired exact SHA to review: unknown` }
+    assert.equal(mapTasks([...flow.filter(t => t.id !== task.id), invalid], ids)
+      .find(t => t.taskId === task.identifier)?.sha, undefined)
+  }
+  assert.equal(mappedFix([...flow, { ...fix, descriptionTruncated: true }])?.sha, undefined)
+  assert.equal(mappedFix([...flow, { ...fix, descriptionTruncated: false }])?.sha, 'b'.repeat(40))
+})
+
+test('unknown sibling QA ordering leaves an ordinary Developer assignment', () => {
+  for (const createdAt of [undefined, null, 'invalid', '', 0, true, {}, []]) {
+    const pending = { ...completedQa, id: 'pending', identifier: 'DEV-72', status: 'in_progress', createdAt }
+    assert.deepEqual(mappedFix([...flow, pending, fix]), { taskId: fix.identifier, title: fix.title })
+    assert.equal(mappedFix([...flow, { ...pending, parentId: 'other' }, fix])?.context, 'rework')
+  }
+  const pending = { ...completedQa, id: 'pending', identifier: 'DEV-72', status: 'in_progress' }
+  assert.equal(mappedFix([...flow, { ...pending, createdAt: date(4) }, fix])?.context, undefined)
+  assert.equal(mappedFix([...flow, { ...pending, createdAt: date(6) }, fix])?.context, 'rework')
+})
+
+for (const [ordering, createdAt, qualifies] of [
+  ['equal to candidate QA', date(3), false],
+  ['equal to Developer task', date(5), false],
+  ['between candidate QA and Developer task', date(4), false],
+  ['strictly before candidate QA', date(2), true],
+  ['strictly after Developer task', date(6), true],
+] as const) {
+  test(`competing QA created ${ordering} ${qualifies ? 'permits' : 'blocks'} rework`, () => {
+    for (const status of ['todo', 'in_progress', 'done', 'cancelled']) {
+      // This sibling cannot itself qualify as a completed pre-assignment cycle.
+      const competing = { ...completedQa, id: 'competing', identifier: 'DEV-72', createdAt, completedAt: date(6), status }
+      const expected = qualifies
+        ? { taskId: fix.identifier, title: fix.title, target: 'developer', context: 'rework', sha: 'b'.repeat(40) }
+        : { taskId: fix.identifier, title: fix.title }
+      assert.deepEqual(mappedFix([...flow, competing, fix]), expected)
+      assert.deepEqual(mappedFix([fix, competing, ...flow.slice().reverse()]), expected)
+    }
+  })
+}

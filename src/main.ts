@@ -1,7 +1,7 @@
 import { paintPortrait } from './art'
 import { PALETTES, type Identity } from './identity'
 import type { RoleId } from './state'
-import { demoHandoff, demoQaHandoff, demoReviewerHandoff } from './handoff'
+import { demoHandoff, demoQaHandoff, demoReviewerHandoff, demoReworkHandoff } from './handoff'
 import './style.css'
 import { pollOffice } from './provider'
 import { demoSnapshot, mapVisualState, ROLES, type DemoMode } from './state'
@@ -22,7 +22,7 @@ root.innerHTML = `
       </section>
       <aside class="team-panel" aria-labelledby="team-title"><div class="team-heading"><p class="eyebrow">IN THE OFFICE</p><h2 id="team-title">The team <span>4</span></h2></div><ul class="roster"></ul><div class="demo-note"><span class="note-icon" aria-hidden="true">◇</span><div><strong>A window into the work</strong><p>Connecting to office state. Paperclip stays in control; this office only visualizes activity.</p></div></div></aside>
     </div>
-    <section class="demo-bar" aria-label="Demo controls"><div><span class="eyebrow">TRY A SCENE</span><p>See the office change pace.</p></div><div class="mode-buttons" role="group" aria-label="Demo activity"><button data-mode="mixed" aria-pressed="true">Mixed activity</button><button data-mode="working" aria-pressed="false">All working</button><button data-mode="idle" aria-pressed="false">All idle</button><button class="demo-handoff">Demo handoff</button><button class="demo-qa-handoff">Demo QA handoff</button><button class="demo-reviewer-handoff">Demo Reviewer handoff</button></div><p id="activity-summary" role="status" aria-live="polite"></p></section>
+    <section class="demo-bar" aria-label="Demo controls"><div><span class="eyebrow">TRY A SCENE</span><p>See the office change pace.</p></div><div class="mode-buttons" role="group" aria-label="Demo activity"><button data-mode="mixed" aria-pressed="true">Mixed activity</button><button data-mode="working" aria-pressed="false">All working</button><button data-mode="idle" aria-pressed="false">All idle</button><button class="demo-handoff">Demo handoff</button><button class="demo-qa-handoff">Demo QA handoff</button><button class="demo-reviewer-handoff">Demo Reviewer handoff</button><button class="demo-rework-handoff">Demo Rework handoff</button></div><p id="activity-summary" role="status" aria-live="polite"></p></section>
     <footer><span>PIXEL OFFICE <span class="footer-slash">/</span> FOUNDATION 01</span><details><summary>Credits &amp; license</summary><p>Rendering and code-defined sprites adapted from <a href="https://github.com/rolandal/pixel-agents-standalone">Pixel Agents Standalone</a>, based on <a href="https://github.com/pixel-agents-hq/pixel-agents">Pixel Agents</a>.</p><pre class="license"></pre></details></footer>
   </main>`
 root.querySelector('.license')!.textContent = license
@@ -75,6 +75,7 @@ root.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => {
 root.querySelector('.demo-handoff')!.addEventListener('click', () => { if (isDemo) office.handoff(demoHandoff) })
 root.querySelector('.demo-qa-handoff')!.addEventListener('click', () => { if (isDemo) office.handoff(demoQaHandoff) })
 root.querySelector('.demo-reviewer-handoff')!.addEventListener('click', () => { if (isDemo) office.handoff(demoReviewerHandoff) })
+root.querySelector('.demo-rework-handoff')!.addEventListener('click', () => { if (isDemo) office.handoff(demoReworkHandoff) })
 const controls = root.querySelector<HTMLElement>('.mode-buttons')!
 controls.hidden = true
 root.querySelector('.demo-bar .eyebrow')!.textContent = 'OFFICE ACTIVITY'

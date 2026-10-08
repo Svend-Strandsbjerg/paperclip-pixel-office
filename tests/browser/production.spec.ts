@@ -11,7 +11,7 @@ test('production demo controls fit and remain usable at 320px', async ({ page })
   await expect(controls).toBeVisible()
   await controls.scrollIntoViewIfNeeded()
   const buttons = controls.getByRole('button')
-  await expect(buttons).toHaveCount(6)
+  await expect(buttons).toHaveCount(7)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
   for (const button of await buttons.all()) {
     await expect(button).toBeInViewport({ ratio: 1 })
@@ -29,7 +29,7 @@ test('production demo controls fit and remain usable at 320px', async ({ page })
 })
 
 test('production start bridges live HTTP reads, handoff, outage/recovery and reload without leaking credentials', async ({ page }) => {
-  test.setTimeout(90000)
+  test.setTimeout(120000)
   const ids = { orchestrator: 'private-orchestrator', developer: 'private-developer', 'browser-qa': 'private-qa', reviewer: 'private-reviewer' }
   const secret = 'production-browser-test-secret'
   let broken = false
@@ -40,6 +40,8 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
   let reviewerRunning = false
   let issuesBroken = false
   let missedQa = false
+  let rework = 0
+  let showRework = true
   const upstreamMethods: string[] = []
   const upstream = createServer((req, res) => {
     upstreamMethods.push(req.method!)
@@ -48,6 +50,10 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     if (issuesBroken && req.url?.includes('/issues')) { res.writeHead(503); res.end('{}'); return }
     if (broken) { res.writeHead(503); res.end(JSON.stringify({ private: secret })); return }
     res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i] }, avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1', status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning) || (id === ids.reviewer && reviewerRunning)) ? 'running' : 'active', secret })) : [
+      { id: 'rework-parent', assigneeAgentId: ids.orchestrator },
+      { id: 'rework-dev', parentId: 'rework-parent', assigneeAgentId: ids.developer, status: 'done', identifier: 'DEV-200', title: 'Implementation', createdAt: '2026-10-01', completedAt: '2026-10-02' },
+      { id: 'rework-qa', parentId: 'rework-parent', assigneeAgentId: ids['browser-qa'], status: 'done', identifier: 'DEV-201', title: 'QA', createdAt: '2026-10-03', completedAt: '2026-10-04' },
+      ...(showRework ? Array.from({ length: rework }, (_, i) => ({ id: 'rework-' + i, parentId: 'rework-parent', assigneeAgentId: ids.developer, identifier: 'DEV-' + (202 + i), title: 'Address QA findings', createdAt: '2026-10-05', description: i === 0 ? 'Exact PR head SHA to review: 0123456789abcdef0123456789abcdef01234567' : undefined })) : []),
       { id: 'private-parent', assigneeAgentId: ids.orchestrator },
       { id: 'historical-dev', parentId: 'private-parent', assigneeAgentId: ids.developer, status: 'done', identifier: 'DEV-120', title: 'Completed implementation' },
       { id: 'historical-qa', parentId: 'private-parent', assigneeAgentId: ids['browser-qa'], status: 'done', identifier: 'DEV-121', title: 'Historical QA' },
@@ -127,11 +133,36 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
     await page.waitForTimeout(3200)
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+    rework = 1
+    await expect(page.getByRole('button', { name: 'Demo Rework handoff', exact: true })).toBeHidden()
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
+    await expect(page.locator('canvas')).toHaveAttribute('data-target', 'developer')
+    await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
+    await expect(page.locator('.task-bubble')).toHaveText('Rework DEV-202 @ 0123456 — Address QA findings', { timeout: 6000 })
+    await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'working')
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'returning', { timeout: 5000 })
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
+    showRework = false
+    await page.waitForTimeout(1800)
+    showRework = true
+    await page.waitForTimeout(1800)
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await page.setViewportSize({ width: 320, height: 740 })
+    rework = 2
+    await expect(page.locator('.task-bubble')).toHaveText('Rework DEV-203 — Address QA findings')
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'bubble')
+    const reworkBox = (await page.locator('.task-bubble').boundingBox())!
+    expect(reworkBox.x).toBeGreaterThanOrEqual(0)
+    expect(reworkBox.x + reworkBox.width).toBeLessThanOrEqual(320)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
+    await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
     issuesBroken = true
     await expect.poll(async () => (await (await fetch(base + '/api/office-state')).json()).tasks).toBeNull()
     await page.waitForTimeout(1800)
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     missedQa = true
+    rework = 3
     issuesBroken = false
     await page.waitForTimeout(3200)
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')

@@ -1,10 +1,11 @@
 /** Visual-only payload: no Paperclip identities or activity overrides. */
 export type Destination = 'developer' | 'browser-qa' | 'reviewer'
-export type Task = { taskId: string; title: string; target?: Destination; sha?: string }
+export type Task = { taskId: string; title: string; target?: Destination; sha?: string; context?: 'rework' }
 export type Handoff = Task & { source: 'orchestrator'; target: Destination }
 export const demoHandoff: Handoff = { source: 'orchestrator', target: 'developer', taskId: 'DEMO-1', title: 'Build the next office feature' }
 export const demoQaHandoff: Handoff = { source: 'orchestrator', target: 'browser-qa', taskId: 'DEMO-2', title: 'Test the implementation', sha: 'abc1234abc1234abc1234abc1234abc1234abc1234a' }
 export const demoReviewerHandoff: Handoff = { source: 'orchestrator', target: 'reviewer', taskId: 'DEMO-3', title: 'Review the implementation', sha: 'abc1234abc1234abc1234abc1234abc1234abc1234a' }
+export const demoReworkHandoff: Handoff = { source: 'orchestrator', target: 'developer', context: 'rework', taskId: 'DEMO-4', title: 'Address QA findings', sha: 'abc1234abc1234abc1234abc1234abc1234abc1234a' }
 export const SEEN_LIMIT = 10000
 export function handoffTracker() {
   let previous: Set<string> | undefined
