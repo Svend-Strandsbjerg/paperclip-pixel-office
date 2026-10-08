@@ -1,6 +1,7 @@
+import { PALETTES, identityText, type Identity, type PaletteId } from './identity'
 import { handoffTracker, type Handoff, type Task } from './handoff'
 import { ROLES, type Activity, type RoleId } from './state'
-export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<RoleId, Activity>; tasks?: Task[] | null }
+export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<RoleId, Activity>; identities?: Partial<Record<RoleId, Identity>>; tasks?: Task[] | null }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
@@ -14,6 +15,16 @@ export function parseSnapshot(value: unknown): OfficeSnapshot {
   const result: OfficeSnapshot = {
     mode: value.mode,
     snapshot: Object.fromEntries(ROLES.map(r => [r.id, snapshot[r.id]])) as Record<RoleId, Activity>,
+  }
+  if (Object.hasOwn(value, 'identities')) {
+    if (!isPlainObject(value.identities)) throw new Error('Invalid identities')
+    result.identities = {}
+    for (const role of ROLES) {
+      const identity = value.identities[role.id]
+      if (!isPlainObject(identity) || typeof identity.name !== 'string' || typeof identity.role !== 'string') throw new Error('Invalid identity')
+      if (identity.paletteId !== undefined && (typeof identity.paletteId !== 'string' || !Object.hasOwn(PALETTES, identity.paletteId))) throw new Error('Invalid palette')
+      result.identities[role.id] = Object.freeze({ name: identityText(identity.name, role.name), role: identityText(identity.role, role.name), ...(identity.paletteId ? { paletteId: identity.paletteId as PaletteId } : {}) })
+    }
   }
   if (Object.hasOwn(value, 'tasks')) {
     if (value.tasks == null) result.tasks = value.tasks

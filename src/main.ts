@@ -1,3 +1,6 @@
+import { paintPortrait } from './art'
+import { PALETTES, type Identity } from './identity'
+import type { RoleId } from './state'
 import { demoHandoff, demoQaHandoff, demoReviewerHandoff } from './handoff'
 import './style.css'
 import { pollOffice } from './provider'
@@ -36,14 +39,20 @@ for (const role of ROLES) {
   const card = document.createElement('li')
   card.dataset.role = role.id
   card.style.setProperty('--role-color', role.color)
-  card.innerHTML = `<span class="avatar" aria-hidden="true">${role.desk}</span><div class="role-info"><h3>${role.name}</h3><p>Desk ${role.desk} <span>·</span> <span class="activity"></span></p></div><i class="presence" aria-hidden="true"></i>`
+  card.innerHTML = `<span class="avatar" aria-hidden="true"><img class="portrait" alt="" /></span><div class="role-info"><h3>${role.name}</h3><p class="identity-name"></p><p>Desk ${role.desk} <span>·</span> <span class="activity"></span></p></div><i class="presence" aria-hidden="true"></i>`
   roster.append(card)
 }
-const office = mountOffice(root.querySelector('canvas')!, mapVisualState({}))
+const office = mountOffice(root.querySelector('.scene canvas')!, mapVisualState({}))
+let identities: Partial<Record<RoleId, Identity>> | undefined
 function showSnapshot(snapshot: unknown) {
-  const state = mapVisualState(snapshot)
+  const state = mapVisualState(snapshot, identities)
   office.setState(state)
   for (const agent of state) {
+    const card = roster.querySelector<HTMLElement>(`[data-role="${agent.id}"]`)!
+    card.querySelector<HTMLElement>(".identity-name")!.textContent = agent.identity ? `${agent.identity.name} · ${agent.identity.role}` : "Identity unavailable"
+    card.title = agent.identity?.paletteId ? `Paperclip palette: ${agent.identity.paletteId}` : "Local role appearance"
+    card.style.setProperty("--role-color", agent.identity?.paletteId ? PALETTES[agent.identity.paletteId][0] : agent.color)
+    paintPortrait(card.querySelector<HTMLImageElement>(".portrait")!, agent)
     root.querySelectorAll<HTMLElement>(`[data-role="${agent.id}"]`).forEach(element => {
       element.dataset.activity = agent.activity
       element.querySelector('.activity')!.textContent = agent.activity === 'working' ? 'Working' : 'Idle'
@@ -80,6 +89,7 @@ const stopPolling = pollOffice(data => {
   root.querySelector('.source')!.textContent = isDemo ? 'LOCAL DEMO' : 'LIVE · CONNECTED'
   root.querySelector('.demo-note p')!.textContent = isDemo ? 'Deterministic local demonstration. No live activity is shown.' : 'Read-only Paperclip activity. Updates automatically.'
   root.querySelector('.demo-bar p')!.textContent = isDemo ? 'See the office change pace.' : 'Live agent activity'
+  identities = data.identities
   showSnapshot(data.snapshot)
 }, () => {
   root.querySelector('.source')!.textContent = 'DISCONNECTED'

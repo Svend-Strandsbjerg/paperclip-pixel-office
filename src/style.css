@@ -62,7 +62,7 @@ summary { cursor: pointer; text-align: right; }
 details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { font-size: 12px; }pre { white-space: pre-wrap; font-size: 10px; }
 @media (max-width: 1100px) { .workspace { grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; }.roster li { padding: 15px 0; }.desk-label { font-size: 9px; gap: 4px; padding: 4px; }.desk-label .activity { display: none; }.demo-note { padding: 18px; } }
 @media (max-width: 850px) { .workspace { grid-template-columns: 1fr; }.team-panel { display: block; }.team-heading { padding-bottom: 0; }.roster { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }.demo-note { padding: 18px 22px; }.desk-label { font-size: 11px; }.desk-label .activity { display: inline; }.demo-bar { flex-wrap: wrap; gap: 16px; }#activity-summary { margin-left: 0; }.office-count { display: none; } }
-@media (max-width: 480px) { .topbar { height: 66px; }.brand { gap: 7px; font-size: 10px; letter-spacing: 1px; }.brand-divider { margin: 0 2px; }.brand-sub { font-size: 10px; }.source { font-size: 8px; padding: 6px; letter-spacing: 0; }main { padding-top: 30px; }.intro { margin-bottom: 24px; }.desk-label { font-size: 8px; }.desk-label .activity { display: none; }.scene-footer { font-size: 8px; padding: 12px; }.roster { column-gap: 12px; padding: 0 15px; }.roster li { gap: 8px; }h3 { font-size: 11px; }.presence { display: none; }.avatar { width: 28px; }.mode-buttons { width: 100%; }button { flex: 1; padding: 10px 8px; }.demo-bar { gap: 12px; }footer { font-size: 8px; } }
+@media (max-width: 480px) { .topbar { height: 66px; }.brand { gap: 7px; font-size: 10px; letter-spacing: 1px; }.brand-divider { margin: 0 2px; }.brand-sub { font-size: 10px; }.source { font-size: 8px; padding: 6px; letter-spacing: 0; }main { padding-top: 30px; }.intro { margin-bottom: 24px; }.desk-label { font-size: 8px; }.desk-label .activity { display: none; }.scene-footer { font-size: 8px; padding: 12px; }.roster { column-gap: 12px; padding: 0 15px; }.roster li { gap: 8px; }h3 { font-size: 11px; }.presence { display: none; }.avatar { width: 28px; }.mode-buttons { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }button { flex: 1; padding: 10px 8px; }.demo-bar { gap: 12px; }footer { font-size: 8px; } }
 
 [hidden] { display: none !important; }
 
@@ -79,3 +79,14 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
   .scene .labels { position: relative; }
   .scene .task-bubble { position: relative; grid-area: 1 / 1; left: auto; top: auto; width: auto; margin: 8px; }
 }
+
+/* Warm wood, ink-blue architecture and Paperclip-colored portrait accents. */
+.office-panel { border-color: #637575; box-shadow: 0 14px 38px #081e2538; }
+.panel-heading { background: #233942; color: #e0cfad; }
+.scene-footer { background: #233942; }
+.avatar { width: 44px; height: 52px; background: #304751; border: 1px solid #516773; border-bottom: 3px solid var(--role-color); }
+.avatar .portrait { width: 36px; height: 48px; }
+.role-info { min-width: 0; }
+.role-info .identity-name { color: #c4d3cd; font-size: 10px; line-height: 1.5; margin: -2px 0 5px; overflow-wrap: anywhere; }
+.desk-label { background: #233942; border: 1px solid #62777a; box-shadow: 0 2px 0 #122932; }
+@media (max-width: 480px) { .avatar { width: 30px; height: 44px; }.avatar .portrait { width: 27px; height: 36px; }.role-info .identity-name { font-size: 9px; } }
