@@ -40,58 +40,43 @@ are controlled verification, not evidence of a naturally occurring QA rejection.
 The package does not define a separate lint command. Browser QA and Reviewer
 still own their independent exact-SHA gates. This change does not merge or deploy.
 
-## Final results (2026-10-08)
+## Current verification (DEV-95, 2026-10-08)
 
-- 52/52 unit/integration tests passed.
-- Production build and TypeScript check passed; no separate lint script exists.
-- Complete Chromium suite: 22/22 passed with
-  `npm run test:browser -- --workers=2` (2.9 minutes).
-- Production `npm run start` HTTP fixture test passed: health, polling, initial/QA/
-  Reviewer/rework routes, rework with and without SHA, removal/reappearance,
-  recovery/reload silence, identity retention, 320px reduced motion and GET-only
-  upstream access. This is the runtime smoke evidence.
-- `git diff --check` passed.
+The earlier dependency/download blockage is resolved: `npm ci` succeeds and the
+existing shared Playwright browser cache contains Chromium. No Paperclip
+infrastructure or configuration changes were needed. The current implementation
+passes 59/59 unit/integration tests and the production build/TypeScript check.
+There is no separate lint script. Production `npm run start` returns HTTP 200
+with `{"status":"ok"}` from `/health`.
 
-Chromium's standard binary was installed into the runtime cache before verification.
-Two new movement assertions were corrected to wait for bubble visibility rather
-than merely text content, since text is prepared during outbound travel.
+Final committed-head validation runs `npm ci`, `npm run build`, `npm test`,
+`git diff --check`, the complete Chromium suite with
+`npm run test:browser -- --workers=2`, and a production health smoke. Exact final
+SHA and final results are recorded in PR #9 and the DEV-95 task handoff. Local
+application checks use subprocess-local `NO_PROXY=127.0.0.1,localhost` and
+`no_proxy=127.0.0.1,localhost`; the browser suite uses the existing runtime-provided
+`PLAYWRIGHT_BROWSERS_PATH` without installing another browser.
 
-## DEV-87 correction (2026-10-08)
+## Corrections covered
 
-The correction restores QA/Reviewer SHA extraction from available issue-list
-text even when `descriptionTruncated` is true. Only rework descriptions retain
-truncation suppression. Conflicting or invalid recognized labels in available
-text still suppress every role's SHA; unseen truncated text cannot be checked.
-The explicit assignment label `Required exact SHA to review:` joins the allowlist;
-arbitrary prose remains unsupported. Sibling QA tasks with missing, invalid or
-non-string creation times now prevent rework classification, matching the
-conservative Reviewer ordering guard. No application writes, credentials, real
-private identifiers or raw private content were added; rendering and queue code
-are unchanged.
+QA/Reviewer SHA extraction uses available issue-list text even when
+`descriptionTruncated` is true. Only rework descriptions retain truncation
+suppression. Conflicting or invalid recognized labels in available text still
+suppress every role's SHA; unseen truncated text cannot be checked. The explicit
+assignment label `Required exact SHA to review:` is allowlisted; arbitrary prose
+remains unsupported.
 
-Recovery of prior local commit 93dd144865bb7ed6512b92bf2c7fc6f3c35dab46 failed:
-the accessible filesystem contained only the current repository object store,
-which lacked that object, and GitHub rejected fetching it as `not our ref`.
-The scoped correction was recreated on the existing dev-84-qa-rework branch.
+A competing Browser QA sibling now blocks a candidate rework chain when its
+creation time is missing, invalid, non-string, equal to either the candidate QA
+or new Developer creation time, or between those times. Only siblings provably
+older than the candidate QA or later than the Developer are harmless. The
+candidate QA itself is excluded from the competing-sibling check. Reviewer-return
+exclusion remains unchanged. No comments, status text, runtime activity, or
+`updatedAt` are used to infer ordering.
 
-Current correction verification is incomplete due to runtime dependencies:
-
-- Focused handoff tests: 22/22 passed using Node 24 native TypeScript execution
-  with a temporary extension-resolution hook outside the repository.
-- Full-suite fallback attempt: 41 passed, 6 failed. Two test modules require
-  tsx's JavaScript-to-TypeScript import resolution; four production server tests
-  require the unavailable frontend build. This is not a complete suite pass.
-- `npm ci` could not download packages: registry.npmjs.org returned HTTP 403
-  through the configured network path. No installed dependency copy was found.
-- Production build/TypeScript and Chromium commands were attempted but could not
-  launch: `tsc: not found` and `playwright: not found`.
-- Production Node startup was attempted and correctly refused readiness without
-  built frontend assets. A successful production `/health` smoke is outstanding.
-- `git diff --check` passed.
-
-Runtime operator must restore permitted npm package downloads and the standard
-Playwright Chromium binary. Developer must then run npm ci, npm test, npm run
-build, the full Chromium suite and production Node health smoke before this
-correction is ready for downstream QA/Reviewer gates. Earlier successful results
-above apply to the prior implementation, not this correction. Current focused
-coverage uses controlled fixtures; no organic QA rejection is claimed.
+Five focused regressions cover both equal-time boundaries, the interval between
+them, and both harmless outside orderings across task statuses and input orders.
+Existing malformed timestamp and Reviewer exclusion tests remain in place.
+Controlled HTTP/browser fixtures are not evidence of an organic live QA rejection.
+Independent Browser QA, Reviewer, and human merge gates remain Orchestrator-owned;
+any new push invalidates earlier downstream approvals.

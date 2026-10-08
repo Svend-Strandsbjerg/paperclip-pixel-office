@@ -37,10 +37,11 @@ export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
         time(q.createdAt) <= time(q.completedAt) && time(q.completedAt) < time(i.createdAt) &&
         siblings.some(d => d.assigneeAgentId === ids.developer && d.status === 'done' &&
           time(d.createdAt) <= time(d.completedAt) && time(d.completedAt) < time(q.createdAt)) &&
-        // An older completed cycle cannot qualify work while a newer QA is pending.
-        !siblings.some(later => later.assigneeAgentId === ids['browser-qa'] &&
+        // Other QA siblings must be provably outside this cycle. Equal creation
+        // times are ambiguous because assignment timestamps are unavailable.
+        !siblings.some(later => later.id !== q.id && later.assigneeAgentId === ids['browser-qa'] &&
           (!Number.isFinite(time(later.createdAt)) ||
-            (time(later.createdAt) > time(q.createdAt) && time(later.createdAt) < time(i.createdAt)))) &&
+            (time(later.createdAt) >= time(q.createdAt) && time(later.createdAt) <= time(i.createdAt)))) &&
         // A subsequent Reviewer stage makes this an unsupported Reviewer return.
         !siblings.some(r => r.assigneeAgentId === ids.reviewer &&
           (!Number.isFinite(time(r.createdAt)) ||

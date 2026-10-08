@@ -301,3 +301,23 @@ test('unknown sibling QA ordering leaves an ordinary Developer assignment', () =
   assert.equal(mappedFix([...flow, { ...pending, createdAt: date(4) }, fix])?.context, undefined)
   assert.equal(mappedFix([...flow, { ...pending, createdAt: date(6) }, fix])?.context, 'rework')
 })
+
+for (const [ordering, createdAt, qualifies] of [
+  ['equal to candidate QA', date(3), false],
+  ['equal to Developer task', date(5), false],
+  ['between candidate QA and Developer task', date(4), false],
+  ['strictly before candidate QA', date(2), true],
+  ['strictly after Developer task', date(6), true],
+] as const) {
+  test(`competing QA created ${ordering} ${qualifies ? 'permits' : 'blocks'} rework`, () => {
+    for (const status of ['todo', 'in_progress', 'done', 'cancelled']) {
+      // This sibling cannot itself qualify as a completed pre-assignment cycle.
+      const competing = { ...completedQa, id: 'competing', identifier: 'DEV-72', createdAt, completedAt: date(6), status }
+      const expected = qualifies
+        ? { taskId: fix.identifier, title: fix.title, target: 'developer', context: 'rework', sha: 'b'.repeat(40) }
+        : { taskId: fix.identifier, title: fix.title }
+      assert.deepEqual(mappedFix([...flow, competing, fix]), expected)
+      assert.deepEqual(mappedFix([fix, competing, ...flow.slice().reverse()]), expected)
+    }
+  })
+}
