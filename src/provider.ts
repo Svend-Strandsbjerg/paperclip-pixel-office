@@ -35,8 +35,9 @@ export function parseSnapshot(value: unknown): OfficeSnapshot {
             typeof task.taskId !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(task.taskId) || task.taskId.length > 32 ||
             typeof task.title !== 'string' || task.title.length > 80) throw new Error('Invalid tasks')
         if (task.target !== undefined && task.target !== 'developer' && task.target !== 'browser-qa' && task.target !== 'reviewer') throw new Error('Invalid target')
-        if (task.sha !== undefined && ((task.target !== 'browser-qa' && task.target !== 'reviewer') || typeof task.sha !== 'string' || !/^[a-f0-9]{40}$/.test(task.sha))) throw new Error('Invalid SHA')
-        return { taskId: task.taskId, title: task.title, ...(task.target ? { target: task.target } : {}), ...(task.sha ? { sha: task.sha as string } : {}) }
+        if (task.context !== undefined && (task.context !== 'rework' || task.target !== 'developer')) throw new Error('Invalid context')
+        if (task.sha !== undefined && ((task.target !== 'browser-qa' && task.target !== 'reviewer' && task.context !== 'rework') || typeof task.sha !== 'string' || !/^[a-f0-9]{40}$/.test(task.sha))) throw new Error('Invalid SHA')
+        return { taskId: task.taskId, title: task.title, ...(task.target ? { target: task.target } : {}), ...(task.sha ? { sha: task.sha as string } : {}), ...(task.context === 'rework' ? { context: 'rework' as const } : {}) }
       })
     }
   }

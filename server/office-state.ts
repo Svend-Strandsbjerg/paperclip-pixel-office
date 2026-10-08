@@ -8,7 +8,9 @@ import type { Task } from '../src/handoff.ts'
  * Conflicting labels, abbreviated hashes and incidental commit mentions stay absent. */
 export function qaSha(description: unknown): string | undefined {
   if (typeof description !== 'string') return undefined
-  const hashes = [...description.matchAll(/^\s*(?:-\s*)?(?:Exact SHA|Required exact SHA|Exact required PR head SHA|Required tested SHA|Exact PR head SHA(?: to test)?|Immutable SHA to test):\s*`?([a-f0-9]{40})`?\s*$/gim)].map(m => m[1].toLowerCase())
+  const values = [...description.matchAll(/^\s*(?:-\s*)?(?:Exact SHA(?: to (?:test|review))?|Required exact SHA|Exact required PR head SHA|Required tested SHA|Exact PR head SHA(?: to (?:test|review))?|Immutable SHA to test):([^\n\r]*)$/gim)].map(m => m[1].trim())
+  if (!values.length || values.some(v => !/^(?:[a-f0-9]{40}|`[a-f0-9]{40}`)$/i.test(v))) return undefined
+  const hashes = values.map(v => v.replaceAll('`', '').toLowerCase())
   return new Set(hashes).size === 1 ? hashes[0] : undefined
 }
 
@@ -20,21 +22,38 @@ export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
   const completedFlows = new Set(items.filter(i => i.assigneeAgentId === ids.developer && i.status === 'done' && parents.has(i.parentId)).map(i => i.parentId))
   // A Reviewer assignment is the Orchestrator's workflow decision; completion is
   // checked directly, but no verdict is inferred from free text or agent activity.
-  const reviewedFlows = new Set(items.filter(i => i.assigneeAgentId === ids['browser-qa'] && i.status === 'done' && parents.has(i.parentId)).map(i => i.parentId))
+  const reviewedFlows = new Set(items.filter(i => i.assigneeAgentId === ids['browser-qa'] && i.status === 'done' && completedFlows.has(i.parentId)).map(i => i.parentId))
   return items.filter(i => typeof i.title === 'string' && parents.has(i.parentId) && (i.assigneeAgentId === ids.developer || (i.assigneeAgentId === ids['browser-qa'] && completedFlows.has(i.parentId)) || (i.assigneeAgentId === ids.reviewer && reviewedFlows.has(i.parentId))) &&
     typeof i.identifier === 'string' && /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(i.identifier) && i.identifier.length <= 32)
     .map(i => {
       const qa = i.assigneeAgentId === ids['browser-qa']
       const reviewer = i.assigneeAgentId === ids.reviewer
-      const sha = qa || reviewer ? qaSha(i.description) : undefined
+      // No assignment timestamp is exposed by the issue list. Use creation and
+      // completion timestamps, never updatedAt (which changes on title/status edits).
+      const time = (value: unknown) => typeof value === 'string' ? Date.parse(value) : NaN
+      const siblings = items.filter(s => s.parentId === i.parentId && s.id !== i.id)
+      const rework = i.assigneeAgentId === ids.developer && siblings.some(q =>
+        q.assigneeAgentId === ids['browser-qa'] && q.status === 'done' &&
+        time(q.createdAt) <= time(q.completedAt) && time(q.completedAt) < time(i.createdAt) &&
+        siblings.some(d => d.assigneeAgentId === ids.developer && d.status === 'done' &&
+          time(d.createdAt) <= time(d.completedAt) && time(d.completedAt) < time(q.createdAt)) &&
+        // An older completed cycle cannot qualify work while a newer QA is pending.
+        !siblings.some(later => later.assigneeAgentId === ids['browser-qa'] &&
+          time(later.createdAt) > time(q.createdAt) && time(later.createdAt) < time(i.createdAt)) &&
+        // A subsequent Reviewer stage makes this an unsupported Reviewer return.
+        !siblings.some(r => r.assigneeAgentId === ids.reviewer &&
+          (!Number.isFinite(time(r.createdAt)) ||
+            (time(r.createdAt) >= time(q.createdAt) && time(r.createdAt) <= time(i.createdAt)))))
+      const sha = !i.descriptionTruncated && (qa || reviewer || rework) ? qaSha(i.description) : undefined
       return {
         taskId: i.identifier,
         title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task',
         ...(qa ? { target: 'browser-qa' as const } : reviewer ? { target: 'reviewer' as const } : {}),
+        ...(rework ? { target: 'developer' as const, context: 'rework' as const } : {}),
         ...(sha ? { sha } : {}),
       }
     })
-    .sort((a, b) => a.taskId.localeCompare(b.taskId))
+    .sort((a, b) => a.taskId.localeCompare(b.taskId, undefined, { numeric: true }))
 }
 
 // Paperclip supports at most 1000 issues per list read. A full page may be truncated.
