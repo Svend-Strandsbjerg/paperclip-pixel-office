@@ -225,7 +225,7 @@ test('new assignments drive rework once across multiple cycles; status, text and
 test('explicit SHA labels fail closed including invalid competing labels', async () => {
   const { qaSha } = await import('../server/office-state')
   const sha = 'abcdef0123456789abcdef0123456789abcdef01'
-  for (const label of ['Exact SHA', 'Exact SHA to test', 'Exact SHA to review', 'Required exact SHA', 'Exact PR head SHA', 'Exact PR head SHA to test', 'Exact PR head SHA to review']) {
+  for (const label of ['Exact SHA', 'Exact SHA to test', 'Exact SHA to review', 'Required exact SHA', 'Required exact SHA to review', 'Exact PR head SHA', 'Exact PR head SHA to test', 'Exact PR head SHA to review']) {
     assert.equal(qaSha(`${label}: ${sha}`), sha)
     assert.equal(qaSha(`- ${label}: \`${sha}\``), sha)
     for (const invalid of ['abc1234', 'unknown', `${sha} or ${'a'.repeat(40)}`, `\`${sha}`]) {
@@ -271,4 +271,33 @@ test('assignment of a new post-QA child qualifies, without activity or comment p
 
 test('numeric task ordering preserves creation sequence across identifier digit boundaries', () => {
   assert.deepEqual(mapTasks([parent, { ...child, identifier: 'DEV-100' }, { ...child, id: 'earlier', identifier: 'DEV-99' }], ids).map(t => t.taskId), ['DEV-99', 'DEV-100'])
+})
+
+
+test('truncated QA and Reviewer descriptions retain available exact SHA; rework omits it', () => {
+  const review = { ...child, id: 'review', identifier: 'DEV-71', assigneeAgentId: ids.reviewer,
+    description: `Required exact SHA to review: ${'c'.repeat(40)}`, descriptionTruncated: true }
+  const tasks = mapTasks([...flow.filter(t => t.id !== completedQa.id),
+    { ...completedQa, descriptionTruncated: true }, review], ids)
+  assert.equal(tasks.find(t => t.taskId === completedQa.identifier)?.sha, 'a'.repeat(40))
+  assert.equal(tasks.find(t => t.taskId === review.identifier)?.sha, 'c'.repeat(40))
+  for (const task of [completedQa, review]) {
+    const invalid = { ...task, descriptionTruncated: true,
+      description: `Exact SHA: ${'a'.repeat(40)}\nRequired exact SHA to review: unknown` }
+    assert.equal(mapTasks([...flow.filter(t => t.id !== task.id), invalid], ids)
+      .find(t => t.taskId === task.identifier)?.sha, undefined)
+  }
+  assert.equal(mappedFix([...flow, { ...fix, descriptionTruncated: true }])?.sha, undefined)
+  assert.equal(mappedFix([...flow, { ...fix, descriptionTruncated: false }])?.sha, 'b'.repeat(40))
+})
+
+test('unknown sibling QA ordering leaves an ordinary Developer assignment', () => {
+  for (const createdAt of [undefined, null, 'invalid', '', 0, true, {}, []]) {
+    const pending = { ...completedQa, id: 'pending', identifier: 'DEV-72', status: 'in_progress', createdAt }
+    assert.deepEqual(mappedFix([...flow, pending, fix]), { taskId: fix.identifier, title: fix.title })
+    assert.equal(mappedFix([...flow, { ...pending, parentId: 'other' }, fix])?.context, 'rework')
+  }
+  const pending = { ...completedQa, id: 'pending', identifier: 'DEV-72', status: 'in_progress' }
+  assert.equal(mappedFix([...flow, { ...pending, createdAt: date(4) }, fix])?.context, undefined)
+  assert.equal(mappedFix([...flow, { ...pending, createdAt: date(6) }, fix])?.context, 'rework')
 })

@@ -8,7 +8,7 @@ import type { Task } from '../src/handoff.ts'
  * Conflicting labels, abbreviated hashes and incidental commit mentions stay absent. */
 export function qaSha(description: unknown): string | undefined {
   if (typeof description !== 'string') return undefined
-  const values = [...description.matchAll(/^\s*(?:-\s*)?(?:Exact SHA(?: to (?:test|review))?|Required exact SHA|Exact required PR head SHA|Required tested SHA|Exact PR head SHA(?: to (?:test|review))?|Immutable SHA to test):([^\n\r]*)$/gim)].map(m => m[1].trim())
+  const values = [...description.matchAll(/^\s*(?:-\s*)?(?:Exact SHA(?: to (?:test|review))?|Required exact SHA(?: to review)?|Exact required PR head SHA|Required tested SHA|Exact PR head SHA(?: to (?:test|review))?|Immutable SHA to test):([^\n\r]*)$/gim)].map(m => m[1].trim())
   if (!values.length || values.some(v => !/^(?:[a-f0-9]{40}|`[a-f0-9]{40}`)$/i.test(v))) return undefined
   const hashes = values.map(v => v.replaceAll('`', '').toLowerCase())
   return new Set(hashes).size === 1 ? hashes[0] : undefined
@@ -39,12 +39,15 @@ export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
           time(d.createdAt) <= time(d.completedAt) && time(d.completedAt) < time(q.createdAt)) &&
         // An older completed cycle cannot qualify work while a newer QA is pending.
         !siblings.some(later => later.assigneeAgentId === ids['browser-qa'] &&
-          time(later.createdAt) > time(q.createdAt) && time(later.createdAt) < time(i.createdAt)) &&
+          (!Number.isFinite(time(later.createdAt)) ||
+            (time(later.createdAt) > time(q.createdAt) && time(later.createdAt) < time(i.createdAt)))) &&
         // A subsequent Reviewer stage makes this an unsupported Reviewer return.
         !siblings.some(r => r.assigneeAgentId === ids.reviewer &&
           (!Number.isFinite(time(r.createdAt)) ||
             (time(r.createdAt) >= time(q.createdAt) && time(r.createdAt) <= time(i.createdAt)))))
-      const sha = !i.descriptionTruncated && (qa || reviewer || rework) ? qaSha(i.description) : undefined
+      // Preserve QA/Reviewer extraction from available list text; rework requires
+      // an untruncated description so unseen conflicting labels cannot qualify it.
+      const sha = (qa || reviewer || (rework && !i.descriptionTruncated)) ? qaSha(i.description) : undefined
       return {
         taskId: i.identifier,
         title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task',

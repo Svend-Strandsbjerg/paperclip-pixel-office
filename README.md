@@ -86,7 +86,7 @@ Each browser owns its comparison baseline. The first successful task snapshot hy
 
 In explicit demo mode, **Demo handoff** queues `DEMO-1 — Build the next office feature` through the same renderer event method. **Demo QA handoff** queues `QA DEMO-2 @ abc1234 — Test the implementation` through that same path. **Demo Reviewer handoff** queues `Review DEMO-3 @ abc1234 — Review the implementation` through the same path. All handoff controls are hidden and guarded in live mode. Demo handoffs never alter working/idle activity. No synthetic event is automatically inserted on startup.
 
-SHA provenance: the server reads only the destination QA, Reviewer or qualifying Developer rework task description, accepting a full 40-character hexadecimal SHA on a labeled line (`Exact SHA`, `Required exact SHA`, `Exact required PR head SHA`, `Required tested SHA`, `Exact PR head SHA`, `Exact PR head SHA to test`, or `Immutable SHA to test`). Optional Markdown bullets/backticks are accepted. Conflicting recognized values, short hashes, prose-only mentions and missing labels produce no SHA. The bubble shows seven characters of this authoritative assignment value; this is not a claim about the current GitHub head. There are no GitHub requests. Unsupported description formats safely fall back to the destination task identifier/title. A Reviewer SHA is never copied from the parent, Developer, or QA sibling.
+SHA provenance: the server reads only the destination QA, Reviewer or qualifying Developer rework task description, accepting a full 40-character hexadecimal SHA on a labeled line (`Exact SHA`, `Required exact SHA`, `Required exact SHA to review`, `Exact required PR head SHA`, `Required tested SHA`, `Exact PR head SHA`, `Exact PR head SHA to test`, or `Immutable SHA to test`). Optional Markdown bullets/backticks are accepted. Conflicting recognized values, short hashes, prose-only mentions and missing labels produce no SHA. The bubble shows seven characters of this authoritative assignment value; this is not a claim about the current GitHub head. There are no GitHub requests. Unsupported description formats safely fall back to the destination task identifier/title. A Reviewer SHA is never copied from the parent, Developer, or QA sibling.
 
 Focused tests cover issue selection, safe payloads, hydration, new assignment, deduplication, reload/recovery, issue-read failure isolation, exact route endpoints and Chromium's complete outbound → bubble → return sequence. Real integrations require the parent and Developer IDs to match the configured persistent mapping; the app never creates test tasks or writes to Paperclip.
 
@@ -150,9 +150,11 @@ does not change when rework context, title, SHA or task status changes.
 
 Rework displays only the new task's own explicitly labeled full SHA, when present.
 Supported labels include Exact SHA (optionally “to test”/“to review”), Required
-exact SHA, and Exact PR head SHA (optionally “to test”/“to review”), plus the existing
+exact SHA (optionally “to review”), and Exact PR head SHA (optionally “to test”/“to review”), plus the existing
 Exact required PR head SHA, Required tested SHA and Immutable SHA to test.
-Truncated descriptions and invalid or conflicting recognized values omit the SHA. Sibling SHAs are never
+Truncated rework descriptions omit the SHA. QA and Reviewer tasks retain extraction from available issue-list text, including truncated descriptions; conflicts beyond that text cannot be detected. Invalid or conflicting recognized values in available text omit the SHA for every role. Sibling SHAs are never
 inherited. Demo Rework handoff uses DEMO-4 through the same queue and renderer.
 
 Developer verification and schema evidence: [rework verification](docs/rework-verification.md).
+
+A sibling QA with missing, invalid or non-string creation time prevents rework qualification: unknown ordering leaves an ordinary Developer assignment.
