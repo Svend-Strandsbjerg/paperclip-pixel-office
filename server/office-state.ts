@@ -1,3 +1,5 @@
+import { loadDeliveries } from './pipeline.ts'
+import { demoDeliveries, type Delivery } from '../src/pipeline.ts'
 import { appearancePalette, identityText, type Identity } from '../src/identity.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ROLES, demoSnapshot, type Activity, type RoleId } from '../src/state.ts'
@@ -114,6 +116,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
       let snapshot = demoSnapshot('mixed')
       let identities: unknown = demoIdentities
       let tasks: Task[] | null = null
+      let deliveries: Delivery[] | null = config.mode === 'demo' ? demoDeliveries : null
       if (config.mode === 'live') {
         const upstream = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/agents`, {
           method: 'GET', headers: { Authorization: `Bearer ${config.key}` },
@@ -141,13 +144,22 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
             throw new Error('Incomplete issues')
           }
           tasks = mapTasks(input, config.ids!)
+          try {
+            const deadline = AbortSignal.timeout(1500)
+            deliveries = await loadDeliveries(input, config.ids!, async path => {
+              deadline.throwIfAborted()
+              const response = await fetcher(`${config.url}${path}`, { method: 'GET', headers: { Authorization: `Bearer ${config.key}` }, redirect: 'error', signal: deadline })
+              if (!response.ok) throw new Error('Evidence unavailable')
+              return response.json()
+            }, fetcher, env.OFFICE_GITHUB_TOKEN)
+          } catch { deliveries = null }
         } catch {
           tasks = null
           // Fixed categories only: no credentials, issue data, URLs or raw upstream errors.
           console.warn(`[office-state] Issue read failed: ${issueFailure}; task handoffs unavailable, agent activity retained`)
         }
       }
-      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, tasks }))
+      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, tasks, deliveries }))
     } catch {
       res.statusCode = 503
       res.end(JSON.stringify({ error: 'Office state unavailable' }))

@@ -1,7 +1,9 @@
+import { parseDeliveries } from './pipeline-view'
+import type { Delivery } from './pipeline'
 import { PALETTES, identityText, type Identity, type PaletteId } from './identity'
 import { handoffTracker, type Handoff, type Task } from './handoff'
 import { ROLES, type Activity, type RoleId } from './state'
-export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<RoleId, Activity>; identities?: Partial<Record<RoleId, Identity>>; tasks?: Task[] | null }
+export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<RoleId, Activity>; identities?: Partial<Record<RoleId, Identity>>; tasks?: Task[] | null; deliveries?: Delivery[] | null }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
@@ -41,6 +43,7 @@ export function parseSnapshot(value: unknown): OfficeSnapshot {
       })
     }
   }
+  if (Object.hasOwn(value, 'deliveries')) result.deliveries = parseDeliveries(value.deliveries)
   return result
 }
 /** Serial polling: no overlapping requests; retain the last valid state on failure. */
@@ -51,7 +54,7 @@ export function pollOffice(onState: (data: OfficeSnapshot) => void, onFailure: (
   let controller: AbortController | undefined
   async function tick() {
     controller = new AbortController()
-    const timeout = setTimeout(() => controller?.abort(), 7000)
+    const timeout = setTimeout(() => controller?.abort(), 11000)
     try {
       const response = await fetch('/api/office-state', { cache: 'no-store', signal: controller.signal })
       if (!response.ok) throw new Error('Unavailable')
