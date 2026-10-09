@@ -12,12 +12,28 @@ export const PALETTES = {
   'ultraviolet-tide': ['#ad92df', '#71bdcb'],
 } as const
 export type PaletteId = keyof typeof PALETTES
-export type Identity = Readonly<{ name: string; role: string; paletteId?: PaletteId }>
+export type Appearance = Readonly<{ schemaVersion: 1; characterVersion: 'cap-v1'; paletteId: PaletteId }>
+export type Identity = Readonly<{ name: string; role: string; appearance?: Appearance }>
 export function appearancePalette(value: unknown): PaletteId | undefined {
-  if (!value || typeof value !== 'object') return
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return
+  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return
+  if (Object.keys(value).length !== 3 || !['schemaVersion', 'characterVersion', 'paletteId'].every(k => Object.hasOwn(value, k))) return
   const a = value as Record<string, unknown>
   if (a.schemaVersion === 1 && a.characterVersion === 'cap-v1' && typeof a.paletteId === 'string' && Object.hasOwn(PALETTES, a.paletteId)) return a.paletteId as PaletteId
 }
 export function identityText(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || fallback : fallback
+}
+
+/** Project only the validated tuple. Never reproduce Paperclip's ID-derived default. */
+export function normalizeAppearance(value: unknown): Appearance | undefined {
+  const paletteId = appearancePalette(value)
+  return paletteId ? Object.freeze({ schemaVersion: 1, characterVersion: 'cap-v1', paletteId }) : undefined
+}
+export function appearanceKey(identity?: Identity): string | undefined {
+  const a = identity?.appearance
+  return a ? `${a.schemaVersion}:${a.characterVersion}:${a.paletteId}` : undefined
+}
+export function appearanceLabel(identity?: Identity): string {
+  return identity?.appearance ? `Paperclip · ${identity.appearance.paletteId}` : 'Local fallback · appearance unavailable'
 }

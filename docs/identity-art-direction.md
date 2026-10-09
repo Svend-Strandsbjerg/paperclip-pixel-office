@@ -1,5 +1,7 @@
 # Paperclip identity and studio art direction (DEV-75)
 
+Appearance behavior below is historical; see [DEV-115 installed investigation and replacement mapping](paperclip-native-avatars.md).
+
 ## Source and scope
 
 The instance at the supplied `PAPERCLIP_API_URL` refused connections on 2026-10-07. No actual company agent response could be inspected. Instead, the production HTTP/browser fixture uses the current public Paperclip response contract, verified against:

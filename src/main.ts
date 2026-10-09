@@ -1,6 +1,6 @@
 import { renderPipeline } from './pipeline-view'
-import { paintPortrait } from './art'
-import { PALETTES, type Identity } from './identity'
+import { paintPortrait, agentAccent } from './art'
+import { appearanceLabel, type Identity } from './identity'
 import type { RoleId } from './state'
 import { demoHandoff, demoQaHandoff, demoReviewerHandoff, demoReworkHandoff } from './handoff'
 import './style.css'
@@ -41,7 +41,7 @@ for (const role of ROLES) {
   const card = document.createElement('li')
   card.dataset.role = role.id
   card.style.setProperty('--role-color', role.color)
-  card.innerHTML = `<span class="avatar" aria-hidden="true"><img class="portrait" alt="" /></span><div class="role-info"><h3>${role.name}</h3><p class="identity-name"></p><p>Desk ${role.desk} <span>·</span> <span class="activity"></span></p></div><i class="presence" aria-hidden="true"></i>`
+  card.innerHTML = `<span class="avatar" aria-hidden="true"><img class="portrait" alt="" /></span><div class="role-info"><h3>${role.name}</h3><p class="identity-name"></p><p class="appearance-label"></p><p>Desk ${role.desk} <span>·</span> <span class="activity"></span></p></div><i class="presence" aria-hidden="true"></i>`
   roster.append(card)
 }
 const office = mountOffice(root.querySelector('.scene canvas')!, mapVisualState({}))
@@ -52,10 +52,12 @@ function showSnapshot(snapshot: unknown) {
   for (const agent of state) {
     const card = roster.querySelector<HTMLElement>(`[data-role="${agent.id}"]`)!
     card.querySelector<HTMLElement>(".identity-name")!.textContent = agent.identity ? `${agent.identity.name} · ${agent.identity.role}` : "Identity unavailable"
-    card.title = agent.identity?.paletteId ? `Paperclip palette: ${agent.identity.paletteId}` : "Local role appearance"
-    card.style.setProperty("--role-color", agent.identity?.paletteId ? PALETTES[agent.identity.paletteId][0] : agent.color)
+    card.title = appearanceLabel(agent.identity)
+    card.querySelector('.appearance-label')!.textContent = isDemo ? 'Local demo appearance' : card.title
+    card.style.setProperty("--role-color", agentAccent(agent))
     paintPortrait(card.querySelector<HTMLImageElement>(".portrait")!, agent)
     root.querySelectorAll<HTMLElement>(`[data-role="${agent.id}"]`).forEach(element => {
+      element.style.setProperty('--role-color', agentAccent(agent))
       element.dataset.activity = agent.activity
       element.querySelector('.activity')!.textContent = agent.activity === 'working' ? 'Working' : 'Idle'
     })
@@ -100,6 +102,6 @@ const stopPolling = pollOffice(data => {
 }, () => {
   renderPipeline(pipeline, null)
   root.querySelector('.source')!.textContent = 'DISCONNECTED'
-  root.querySelector('.demo-note p')!.textContent = hasState ? 'Connection lost. Showing the last received activity.' : 'Office state unavailable. No live activity has been received.'
+  root.querySelector('.demo-note p')!.textContent = hasState ? 'Connection lost. Showing the last received activity and appearance.' : 'Office state unavailable. No live activity has been received.'
 }, event => office.handoff(event))
 if (import.meta.hot) import.meta.hot.dispose(() => { stopPolling(); office.destroy() })

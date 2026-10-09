@@ -32,6 +32,8 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
   test.setTimeout(120000)
   const ids = { orchestrator: 'private-orchestrator', developer: 'private-developer', 'browser-qa': 'private-qa', reviewer: 'private-reviewer' }
   const secret = 'production-browser-test-secret'
+  let changedAppearance = false
+  let missingAppearance = false
   let broken = false
   let delegated = false
   let qaDelegated = false
@@ -49,7 +51,7 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     if (req.headers.authorization !== `Bearer ${secret}`) { res.writeHead(401); res.end('{}'); return }
     if (issuesBroken && req.url?.includes('/issues')) { res.writeHead(503); res.end('{}'); return }
     if (broken) { res.writeHead(503); res.end(JSON.stringify({ private: secret })); return }
-    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i] }, avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1', status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning) || (id === ids.reviewer && reviewerRunning)) ? 'running' : 'active', secret })) : [
+    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: missingAppearance ? null : { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: changedAppearance ? 'orchid-peach' : ['orchid-peach', 'tangerine-cobalt', 'solar-flare', 'violet-ember'][i] }, avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1', status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning) || (id === ids.reviewer && reviewerRunning)) ? 'running' : 'active', secret })) : [
       { id: 'rework-parent', assigneeAgentId: ids.orchestrator },
       { id: 'rework-dev', parentId: 'rework-parent', assigneeAgentId: ids.developer, status: 'done', identifier: 'DEV-200', title: 'Implementation', createdAt: '2026-10-01', completedAt: '2026-10-02' },
       { id: 'rework-qa', parentId: 'rework-parent', assigneeAgentId: ids['browser-qa'], status: 'done', identifier: 'DEV-201', title: 'QA', createdAt: '2026-10-03', completedAt: '2026-10-04' },
@@ -171,6 +173,16 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await page.waitForTimeout(1700)
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
     expect(await page.locator('.portrait').evaluateAll(images => images.map(i => (i as HTMLImageElement).src))).toEqual(portraits)
+    changedAppearance = true
+    await expect(page.locator('.portrait').nth(1)).toHaveAttribute('data-identity', '1:cap-v1:orchid-peach')
+    const same = await page.locator('.portrait').evaluateAll(images => images.map(i => (i as HTMLImageElement).src))
+    expect(new Set(same).size).toBe(1)
+    await expect(page.locator('.appearance-label').nth(1)).toHaveText('Paperclip · orchid-peach')
+    missingAppearance = true
+    await expect(page.locator('.appearance-label').nth(1)).toHaveText('Local fallback · appearance unavailable')
+    await expect(page.locator('.portrait').nth(1)).toHaveAttribute('data-identity', 'local:developer')
+    missingAppearance = false
+    await expect(page.locator('.portrait').nth(1)).toHaveAttribute('data-identity', '1:cap-v1:orchid-peach')
     broken = true
     await expect(page.locator('.source')).toHaveText('DISCONNECTED')
     expect(await (await fetch(base + '/health')).json()).toEqual({ status: 'ok' })

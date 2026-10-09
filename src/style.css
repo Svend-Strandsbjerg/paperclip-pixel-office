@@ -85,7 +85,7 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 .panel-heading { background: #233942; color: #e0cfad; }
 .scene-footer { background: #233942; }
 .avatar { width: 44px; height: 52px; background: #304751; border: 1px solid #516773; border-bottom: 3px solid var(--role-color); }
-.avatar .portrait { width: 36px; height: 48px; }
+.avatar .portrait { width: 36px; height: 48px; image-rendering: pixelated; }
 .role-info { min-width: 0; }
 .role-info .identity-name { color: #c4d3cd; font-size: 10px; line-height: 1.5; margin: -2px 0 5px; overflow-wrap: anywhere; }
 .desk-label { background: #233942; border: 1px solid #62777a; box-shadow: 0 2px 0 #122932; }

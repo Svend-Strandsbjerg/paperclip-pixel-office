@@ -1,6 +1,6 @@
 import { parseDeliveries } from './pipeline-view'
 import type { Delivery } from './pipeline'
-import { PALETTES, identityText, type Identity, type PaletteId } from './identity'
+import { normalizeAppearance, identityText, type Identity } from './identity'
 import { handoffTracker, type Handoff, type Task } from './handoff'
 import { ROLES, type Activity, type RoleId } from './state'
 export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<RoleId, Activity>; identities?: Partial<Record<RoleId, Identity>>; tasks?: Task[] | null; deliveries?: Delivery[] | null }
@@ -24,8 +24,8 @@ export function parseSnapshot(value: unknown): OfficeSnapshot {
     for (const role of ROLES) {
       const identity = value.identities[role.id]
       if (!isPlainObject(identity) || typeof identity.name !== 'string' || typeof identity.role !== 'string') throw new Error('Invalid identity')
-      if (identity.paletteId !== undefined && (typeof identity.paletteId !== 'string' || !Object.hasOwn(PALETTES, identity.paletteId))) throw new Error('Invalid palette')
-      result.identities[role.id] = Object.freeze({ name: identityText(identity.name, role.name), role: identityText(identity.role, role.name), ...(identity.paletteId ? { paletteId: identity.paletteId as PaletteId } : {}) })
+      const appearance = normalizeAppearance(identity.appearance)
+      result.identities[role.id] = Object.freeze({ name: identityText(identity.name, role.name), role: identityText(identity.role, role.name), ...(appearance ? { appearance } : {}) })
     }
   }
   if (Object.hasOwn(value, 'tasks')) {
