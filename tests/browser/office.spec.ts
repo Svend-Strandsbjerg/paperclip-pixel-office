@@ -163,23 +163,52 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
   expect(errors).toEqual([])
 })
 
-test('reduced-motion handoff shows task text while the canvas stays static', async ({ page }) => {
+// Reduced-motion assignments keep every ghost at rest and add a document beside
+// the orchestrator (scene 104, 148; canvas scale 3). Mask only that 24x30 region
+// so movement or facing changes anywhere else still fail the pixel comparison.
+async function reducedMotionFrame(canvas: Locator) {
+  return canvas.evaluate((node: HTMLCanvasElement) => {
+    const copy = document.createElement('canvas')
+    copy.width = node.width; copy.height = node.height
+    const context = copy.getContext('2d')!
+    context.drawImage(node, 0, 0)
+    const colorAt = (x: number, y: number) => Array.from(context.getImageData(x, y, 1, 1).data)
+    const documentColors = [colorAt(336, 390), colorAt(339, 393), colorAt(342, 402)]
+    context.clearRect(336, 390, 24, 30)
+    return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentColors }
+  })
+}
+
+async function expectStaticDelivery(canvas: Locator, before: Awaited<ReturnType<typeof reducedMotionFrame>>) {
+  await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
+  const during = await reducedMotionFrame(canvas)
+  expect(during.pixels).not.toBe(before.pixels)
+  expect(during.withoutDocument).toBe(before.withoutDocument)
+  // Visible document border, paper, and text line, not just an arbitrary change.
+  expect(during.documentColors).toEqual([
+    [89, 101, 117, 255], [255, 244, 214, 255], [135, 148, 160, 255],
+  ])
+  for (let frame = 0; frame < 5; frame++) {
+    await canvas.page().waitForTimeout(300)
+    await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
+    expect(await canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL())).toBe(during.pixels)
+  }
+}
+
+test('reduced-motion handoff shows task text and a static document with stationary ghosts', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   const canvas = page.locator('canvas')
   await expect(canvas).toHaveAttribute('data-handoff', 'rest')
   const pixels = () => canvas.evaluate(node => node.toDataURL())
-  const before = await pixels()
+  const before = await reducedMotionFrame(canvas)
   await page.getByRole('button', { name: 'Demo handoff', exact: true }).click()
   await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
   await expect(page.locator('.task-bubble')).toBeVisible()
   await expect(page.locator('.task-bubble')).toContainText('DEMO-1')
-  for (let i = 0; i < 5; i++) {
-    await page.waitForTimeout(300)
-    expect(await pixels()).toBe(before)
-  }
+  await expectStaticDelivery(canvas, before)
   await expect(canvas).toHaveAttribute('data-handoff', 'rest')
-  expect(await pixels()).toBe(before)
+  expect(await pixels()).toBe(before.pixels)
 })
 
 test('live burst is bounded and discarded tasks never replay on subsequent polls', async ({ page }) => {
@@ -284,7 +313,7 @@ for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on m
   await expect(page.locator('.source')).toHaveText('LOCAL DEMO')
   await page.getByRole('button', { name: 'All idle', exact: true }).click()
   const canvas = page.locator('canvas')
-  const pixels = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  const before = await reducedMotionFrame(canvas)
   await page.getByRole('button', { name: 'Demo QA handoff', exact: true }).click()
   if (!reducedMotion) await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
   await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
@@ -296,14 +325,14 @@ for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on m
   expect(bubble.x + bubble.width).toBeLessThanOrEqual(390)
   await expect(page.locator('.desk-label[data-role="browser-qa"]')).toHaveAttribute('data-activity', 'idle')
   const during = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
-  if (reducedMotion) expect(during).toBe(pixels)
+  if (reducedMotion) await expectStaticDelivery(canvas, before)
   else {
-    expect(during).not.toBe(pixels)
+    expect(during).not.toBe(before.pixels)
     expect(await orchestratorBounds(canvas)).toBeNull()
   }
   await page.screenshot({ path: `test-results/qa-mobile-${reducedMotion}.png`, fullPage: true })
   await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
-  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
+  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(before.pixels)
   else await expectOrchestratorAtDesk(canvas)
 })
 
@@ -314,7 +343,7 @@ for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounde
   await expect(page.locator('.source')).toHaveText('LOCAL DEMO')
   await page.getByRole('button', { name: 'All idle', exact: true }).click()
   const canvas = page.locator('canvas')
-  const pixels = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
+  const before = await reducedMotionFrame(canvas)
   await page.getByRole('button', { name: 'Demo Reviewer handoff', exact: true }).click()
   if (!reducedMotion) await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
   await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
@@ -326,14 +355,14 @@ for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounde
   expect(bubble.x + bubble.width).toBeLessThanOrEqual(390)
   await expect(page.locator('.desk-label[data-role="reviewer"]')).toHaveAttribute('data-activity', 'idle')
   const during = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
-  if (reducedMotion) expect(during).toBe(pixels)
+  if (reducedMotion) await expectStaticDelivery(canvas, before)
   else {
-    expect(during).not.toBe(pixels)
+    expect(during).not.toBe(before.pixels)
     expect(await orchestratorBounds(canvas)).toBeNull()
   }
   await page.screenshot({ path: `test-results/reviewer-mobile-${reducedMotion}.png`, fullPage: true })
   await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
-  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
+  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(before.pixels)
   else await expectOrchestratorAtDesk(canvas)
 })
 
