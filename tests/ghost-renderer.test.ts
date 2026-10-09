@@ -10,10 +10,11 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   let allocations = 0
   const rotations: number[] = [], translations: number[][] = [], images: unknown[] = []
   const documents: number[][] = []
+  const activityGraphics: number[][] = []
   const media = { matches: false }
   const bubble = { hidden: true, textContent: '', dataset: {}, style: { setProperty() {} }, setAttribute() {}, remove() {} }
   const ctx = new Proxy({
-    fillRect: (...args: number[]) => { if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args) },
+    fillRect: (...args: number[]) => { if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args); if (['#eef0d9', '#98c4d0'].includes((ctx as unknown as CanvasRenderingContext2D).fillStyle as string)) activityGraphics.push(args) },
     rotate: (angle: number) => rotations.push(angle),
     translate: (...args: number[]) => translations.push(args),
     drawImage: (image: unknown) => { if (image instanceof Image) images.push(image) },
@@ -37,11 +38,12 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   const state = mapVisualState({ developer: 'working' })
   office = mountOffice(canvas as unknown as HTMLCanvasElement, state)
   function frame(time: number) {
-    now = time; rotations.length = 0; translations.length = 0; images.length = 0; documents.length = 0
+    now = time; rotations.length = 0; translations.length = 0; images.length = 0; documents.length = 0; activityGraphics.length = 0
     callback!(time)
   }
   frame(1)
   assert.equal(documents.length, 0)
+  assert.ok(activityGraphics.length > 0)
   const first = translations.map(v => [...v])
   const originalImages = [...images]
   frame(17)
@@ -53,6 +55,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   frame(33)
   for (let time = 49; time < 2000; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'outbound')
+  assert.equal(activityGraphics.length, 0) // working recipient hides immediately
   assert.equal(documents.length, 1)
   assert.ok(rotations[0] > 0)
   for (let time = 2000; time < 5100; time += 16) frame(time)
@@ -61,16 +64,21 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   assert.equal(bubble.hidden, false)
   for (let time = 5100; time < 12000; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'rest')
+  assert.ok(activityGraphics.length > 0) // still-working recipient resumes
   assert.equal(documents.length, 0)
   assert.ok(Math.abs(rotations[0]) < 0.001)
   media.matches = true
   frame(12016)
   assert.ok(rotations.every(angle => angle === 0))
   assert.deepEqual(translations[0], [104 * 3, (104 + 44 - 10) * 3])
+  const staticActivity = activityGraphics.map(v => [...v])
+  frame(12024)
+  assert.deepEqual(activityGraphics, staticActivity)
   office.handoff({ ...demoHandoff, taskId: 'reduced' })
   frame(12032)
   assert.equal(canvas.dataset.handoff, 'bubble')
   assert.equal(bubble.hidden, false)
+  assert.equal(activityGraphics.length, 0)
   assert.deepEqual(images, originalImages)
   office.setState([...state, { ...state[1], id: 'dynamic-agent', col: 6, row: 18 }])
   media.matches = false
