@@ -58,7 +58,7 @@ test('timeouts disconnect, retry, and disposal aborts without late callbacks', a
   let failures = 0
   const stop = pollOffice(() => assert.fail('Unexpected state'), () => failures++)
   t.after(stop)
-  t.mock.timers.tick(7000)
+  t.mock.timers.tick(11000)
   await flush()
   assert.equal(signal.aborted, true)
   assert.equal(failures, 1)
@@ -113,4 +113,22 @@ test('disposal suppresses late successful state and handoff callbacks even if fe
   await flush()
   t.mock.timers.tick(30000)
   assert.equal(fetchMock.mock.callCount(), 1)
+})
+
+test('pipeline-only polling updates do not replay handoffs and outages clear freshness', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const { demoDeliveries } = await import('../src/pipeline')
+  let deliveries: unknown = demoDeliveries
+  let broken = false
+  t.mock.method(globalThis,'fetch',async()=>broken ? new Response('',{status:503}) : Response.json({...live,tasks:[{taskId:'DEV-1',title:'Existing task'}],deliveries}))
+  let events=0, failures=0
+  const states: OfficeSnapshot[]=[]
+  const stop=pollOffice(d=>states.push(d),()=>failures++,()=>events++)
+  t.after(stop);await flush()
+  deliveries=[{...demoDeliveries[0],merge:'waiting',pr:{...demoDeliveries[0].pr,head:'b'.repeat(40)},gates:demoDeliveries[0].gates.map(g=>({...g,state:'invalidated'}))}]
+  t.mock.timers.tick(1500);await flush()
+  assert.equal(states.at(-1)!.deliveries![0].merge,'waiting');assert.equal(events,0)
+  broken=true;t.mock.timers.tick(1500);await flush();assert.equal(failures,1)
+  broken=false;deliveries=null;t.mock.timers.tick(1500);await flush()
+  assert.equal(states.at(-1)!.deliveries,null);assert.equal(events,0)
 })

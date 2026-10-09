@@ -1,3 +1,4 @@
+import { demoDeliveries } from '../src/pipeline'
 import { mapIdentities, demoIdentities } from '../server/office-state.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -20,8 +21,8 @@ test('configuration requires explicit unique IDs and never defaults to demo', ()
   assert.throws(() => readConfig({ ...env, PAPERCLIP_AGENT_ROLES: JSON.stringify({ ...ids, developer: 'a' }) }))
   assert.deepEqual(readConfig({ OFFICE_MODE: 'demo' }), { mode: 'demo' })
 })
-async function withBridge(config: NodeJS.ProcessEnv, fetcher: typeof fetch, run: (url: string) => Promise<void>) {
-  const middleware = officeMiddleware(config, fetcher)
+async function withBridge(config: NodeJS.ProcessEnv, fetcher: typeof fetch, run: (url: string) => Promise<void>, now = Date.now) {
+  const middleware = officeMiddleware(config, fetcher, now)
   const server = createServer((req, res) => { void middleware(req, res, () => { res.statusCode = 404; res.end() }) })
   server.listen(0, '127.0.0.1'); await once(server, 'listening')
   try { await run(`http://127.0.0.1:${(server.address() as {port: number}).port}/api/office-state`) }
@@ -39,7 +40,7 @@ test('HTTP bridge uses GET with server credentials and returns only minimal stat
   }, async url => {
     const response = await fetch(url)
     assert.equal(response.headers.get('cache-control'), 'no-store')
-    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), tasks: [] })
+    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), tasks: [], deliveries: [] })
     assert.equal((await fetch(url, { method: 'POST' })).status, 405)
     assert.equal(calls, 2)
   })
@@ -56,7 +57,7 @@ test('configuration, transport, upstream HTTP and schema failures are sanitized'
 })
 test('demo is deterministic, explicitly labeled, and makes no upstream request', async () => {
   await withBridge({ OFFICE_MODE: 'demo' }, async () => { throw new Error('must not fetch') }, async url => {
-    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed'), identities: demoIdentities, tasks: null })
+    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed'), identities: demoIdentities, tasks: null, deliveries: demoDeliveries })
   })
 })
 test('browser validates complete snapshots before updating the renderer', () => {
@@ -95,7 +96,7 @@ test('issue failures log safe server diagnostics while preserving live agent sta
     }, async url => {
       const response = await fetch(url)
       assert.equal(response.status, 200)
-      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), tasks: null })
+      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), tasks: null, deliveries: null })
     })
     const message = warn.mock.calls.at(-1)!.arguments.join(' ')
     assert.ok(message.includes(diagnostic))
@@ -135,4 +136,41 @@ test('snapshot boundary preserves tasks while excluding identity and activity ov
   for (const tasks of [null, [], [task]]) assert.deepEqual(parseSnapshot({ ...valid, tasks }), { ...valid, tasks })
   for (const tasks of [{}, [null], [Object.create(task)], [Object.assign([], task)], Array(1),
     [{ ...task, taskId: 'bad' }], [{ ...task, title: 'x'.repeat(81) }]]) assert.throws(() => parseSnapshot({ ...valid, tasks }))
+})
+
+test('live pipeline bridge keeps agents on GitHub outage and exposes only structured projection', async () => {
+  const sha='a'.repeat(40), prUrl='https://github.com/owner/repo/pull/1'
+  const parent={id:'p',identifier:'DEV-1',title:'Delivery',status:'in_progress',assigneeAgentId:ids.orchestrator}
+  const roles=['developer','browser-qa','reviewer'] as const
+  const children=roles.map((role,i)=>({id:role,identifier:`DEV-${i+2}`,title:role,parentId:'p',assigneeAgentId:ids[role],status:'done',createdAt:new Date(i*2000).toISOString(),completedAt:new Date(i*2000+1000).toISOString()}))
+  let broken=false, now=0, githubCalls=0
+  await withBridge({...env,OFFICE_GITHUB_TOKEN:'github-secret'},async(url,options)=>{
+    assert.equal(options?.method,'GET');assert.equal(options?.redirect,'error')
+    const u=new URL(String(url))
+    if(u.hostname==='api.github.com') {
+      githubCalls++
+      assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer github-secret')
+      if(broken) return new Response('private',{status:503})
+      return Response.json({number:1,html_url:prUrl,state:'open',merged:false,head:{sha,ref:'feature'},base:{ref:'main',repo:{full_name:'owner/repo'}},private:'github-secret'})
+    }
+    assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer secret')
+    if(u.pathname.endsWith('/agents')) return Response.json(agents)
+    if(u.pathname.endsWith('/issues')) return Response.json([parent,...children])
+    const issueId=u.pathname.split('/')[3]
+    return Response.json(issueId==='p'?[]:[{issueId,type:'pull_request',provider:'github',url:prUrl,metadata:{delivery:{sha,outcome:'passed'},private:'secret'}}])
+  },async url=>{
+    const ready=await(await fetch(url)).json();assert.equal(ready.deliveries[0].merge,'ready')
+    assert.ok(!JSON.stringify(ready).includes('secret'));assert.ok(!JSON.stringify(ready).includes('metadata'))
+    broken=true
+    const cached=await Promise.all([fetch(url).then(r=>r.json()),fetch(url).then(r=>r.json())])
+    assert.ok(cached.every(d=>d.deliveries[0].merge==='ready'));assert.equal(githubCalls,1)
+    now=120_000
+    const unavailable=await(await fetch(url)).json();assert.equal(unavailable.deliveries[0].merge,'waiting')
+    assert.deepEqual(unavailable.snapshot,ready.snapshot);assert.deepEqual(unavailable.tasks,ready.tasks)
+    assert.equal(githubCalls,2)
+    await fetch(url);assert.equal(githubCalls,2)
+    broken=false;now+=5000
+    assert.equal((await(await fetch(url)).json()).deliveries[0].merge,'ready')
+    assert.equal(githubCalls,3)
+  },()=>now)
 })
