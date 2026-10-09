@@ -256,6 +256,12 @@ async function orchestratorBounds(canvas: Locator) {
 }
 
 async function expectOrchestratorAtDesk(canvas: Locator) {
+  // Rest ends travel before directional facing finishes easing back to front.
+  // Wait for settled horizontal bounds without waiting for hover to stop.
+  await expect.poll(async () => {
+    const bounds = await orchestratorBounds(canvas)
+    return bounds && { left: bounds.left, right: bounds.right }
+  }, { timeout: 3000 }).toEqual({ left: 285, right: 338 })
   // Sample several frames so a transient pass through the workstation is not
   // enough. The tight horizontal bounds also require the facing to settle.
   for (let frame = 0; frame < 3; frame++) {
