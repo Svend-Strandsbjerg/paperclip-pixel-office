@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 
 const roles = ['Orchestrator', 'Developer', 'Browser QA', 'Reviewer']
 test('production office renders four stable roles and demonstrates every state', async ({ page }) => {
@@ -238,6 +238,39 @@ test('hidden polling drops handoffs; a long frame gap expires active and waiting
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
 })
 
+// Demo ghosts use the neutral #c6ced4 artwork. Read actual canvas pixels at
+// the orchestrator's workstation (scene 104, 148; canvas scale 3), not desk labels
+// that remain stationary during travel. Hover may move the body vertically by 6px.
+async function orchestratorBounds(canvas: Locator) {
+  return canvas.evaluate((el: HTMLCanvasElement) => {
+    const { data } = el.getContext('2d')!.getImageData(264, 360, 96, 108)
+    const xs: number[] = [], ys: number[] = []
+    for (let y = 0; y < 108; y++) for (let x = 0; x < 96; x++) {
+      const i = (y * 96 + x) * 4
+      if (data[i] === 198 && data[i + 1] === 206 && data[i + 2] === 212) {
+        xs.push(x + 264); ys.push(y + 360)
+      }
+    }
+    return xs.length ? { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys), pixels: xs.length } : null
+  })
+}
+
+async function expectOrchestratorAtDesk(canvas: Locator) {
+  // Sample several frames so a transient pass through the workstation is not
+  // enough. The tight horizontal bounds also require the facing to settle.
+  for (let frame = 0; frame < 3; frame++) {
+    await expect(canvas).toHaveAttribute('data-handoff', 'rest')
+    const bounds = await orchestratorBounds(canvas)
+    expect(bounds).not.toBeNull()
+    expect(bounds!.pixels).toBeGreaterThan(2000)
+    expect(Math.abs(bounds!.left - 285)).toBeLessThanOrEqual(2)
+    expect(Math.abs(bounds!.right - 338)).toBeLessThanOrEqual(2)
+    expect(Math.abs(bounds!.top - 383)).toBeLessThanOrEqual(7)
+    expect(Math.abs(bounds!.bottom - 442)).toBeLessThanOrEqual(7)
+    await canvas.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
+  }
+}
+
 for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on mobile, reduced motion ${reducedMotion}`, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
@@ -258,10 +291,14 @@ for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on m
   await expect(page.locator('.desk-label[data-role="browser-qa"]')).toHaveAttribute('data-activity', 'idle')
   const during = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
   if (reducedMotion) expect(during).toBe(pixels)
-  else expect(during).not.toBe(pixels)
+  else {
+    expect(during).not.toBe(pixels)
+    expect(await orchestratorBounds(canvas)).toBeNull()
+  }
   await page.screenshot({ path: `test-results/qa-mobile-${reducedMotion}.png`, fullPage: true })
   await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
-  expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
+  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
+  else await expectOrchestratorAtDesk(canvas)
 })
 
 for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounded on mobile, reduced motion ${reducedMotion}`, async ({ page }) => {
@@ -284,10 +321,14 @@ for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounde
   await expect(page.locator('.desk-label[data-role="reviewer"]')).toHaveAttribute('data-activity', 'idle')
   const during = await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())
   if (reducedMotion) expect(during).toBe(pixels)
-  else expect(during).not.toBe(pixels)
+  else {
+    expect(during).not.toBe(pixels)
+    expect(await orchestratorBounds(canvas)).toBeNull()
+  }
   await page.screenshot({ path: `test-results/reviewer-mobile-${reducedMotion}.png`, fullPage: true })
   await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
-  expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
+  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(pixels)
+  else await expectOrchestratorAtDesk(canvas)
 })
 
 for (const target of ['browser-qa', 'developer', 'reviewer'] as const) {
