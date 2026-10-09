@@ -1,8 +1,8 @@
 import { paintGhost, paintStudio } from './art'
 import { handoffPose, handoffQueue, type Handoff } from './handoff'
-import { CharacterState, Direction } from './vendor/pixel-agents/office/types'
+import { ghostMotion } from './ghost-motion'
 import type { VisualState } from './state'
-import { sceneSize, sceneFurniture, sceneCharacters } from './scene'
+import { sceneSize, sceneFurniture } from './scene'
 import { renderScene } from './vendor/pixel-agents/office/engine/renderer'
 import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 
@@ -10,6 +10,10 @@ import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState) {
   let state = initialState
   let elapsed = 0
+  let frameDelta = 0
+  const ghosts = ghostMotion()
+  ghosts.sync(state.map(agent => agent.id))
+  let furniture = sceneFurniture(state)
   let active: { event: Handoff; seconds: number } | undefined
   const hasParticipants = (event: Handoff) => [event.source, event.target].every(role => state.some(a => (a.specialist ?? a.id) === role))
   const queue = handoffQueue()
@@ -39,30 +43,24 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
   function resize() {
     const size = sceneSize(state)
-    canvas.width = size.width * 3
-    canvas.height = size.height * 3
+    if (canvas.width !== size.width * 3) canvas.width = size.width * 3
+    if (canvas.height !== size.height * 3) canvas.height = size.height * 3
     bubble.style.setProperty('--bubble-top', `${14 / size.height * 100}%`)
     bubble.style.setProperty('--qa-bubble-top', `${92 / size.height * 100}%`)
   }
   resize()
   const stop = startGameLoop(canvas, {
-    update: dt => { elapsed += dt; updateHandoff() },
+    update: dt => { frameDelta = dt; elapsed += dt; updateHandoff() },
     render: ctx => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       paintStudio(ctx, state)
-      const characters = sceneCharacters(state, elapsed, motion.matches)
-      if (active && !motion.matches) {
-        const pose = handoffPose(active.seconds, active.event.target)
-        const visitor = characters[state.findIndex(a => (a.specialist ?? a.id) === 'orchestrator')]
-        visitor.x = pose.x; visitor.y = pose.y
-        visitor.state = pose.phase === 'bubble' ? CharacterState.IDLE : CharacterState.WALK
-        visitor.dir = pose.phase === 'bubble' ? (active.event.target === 'browser-qa' ? Direction.LEFT : Direction.RIGHT) : pose.dx ? (pose.dx > 0 ? Direction.RIGHT : Direction.LEFT) : (pose.dy > 0 ? Direction.DOWN : Direction.UP)
-        visitor.frame = Math.floor(elapsed / 0.15) % 4
-      }
-      renderScene(ctx, sceneFurniture(state), [], 0, 0, 3, null, null)
-      for (const character of characters) {
-        // Existing routes remain intact; the ghost hovers in front of its computer.
-        paintGhost(ctx, state[character.id], character.x, character.y + 44)
+      const travel = active && !motion.matches ? handoffPose(active.seconds, active.event.target) : undefined
+      renderScene(ctx, furniture, [], 0, 0, 3, null, null)
+      for (const agent of state) {
+        const visitor = (agent.specialist ?? agent.id) === 'orchestrator' ? travel : undefined
+        const moving = visitor && visitor.phase !== 'bubble'
+        const pose = ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : 0, moving ? visitor.dy : 0)
+        paintGhost(ctx, agent, visitor?.x ?? agent.col * 16 + 8, (visitor?.y ?? agent.row * 16 + 8) + 44, pose)
       }
       for (const agent of state) {
         const x = (agent.col * 16 + 8) * 3
@@ -73,5 +71,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       }
     },
   })
-  return { setState: (next: VisualState) => { state = next; resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
+  return { setState: (next: VisualState) => { state = next; ghosts.sync(state.map(agent => agent.id)); furniture = sceneFurniture(state); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }

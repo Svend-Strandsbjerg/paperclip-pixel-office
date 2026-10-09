@@ -31,7 +31,7 @@ export function handoffTracker() {
   }
 }
 
-// All destinations share timing and WALK frames; routes stay in the open aisles.
+// All destinations share glide timing; routes stay in the open aisles.
 const routes = { developer: [[6, 6], [6, 5], [16, 5], [16, 6]], 'browser-qa': [[6, 6], [8, 6], [8, 12], [7, 12]], reviewer: [[6, 6], [8, 6], [8, 12], [16, 12]] } as const
 export const WALK_SECONDS = 4
 export const BUBBLE_SECONDS = 3

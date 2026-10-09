@@ -1,3 +1,4 @@
+import { FRONT, type GhostPose } from './ghost-motion'
 import { PALETTES, appearanceKey } from './identity'
 import type { VisualAgent, VisualState } from './state'
 import { sceneSize } from './scene'
@@ -29,9 +30,17 @@ export function ghostImage(agent: VisualAgent, now = Date.now()) {
   }
   return entry.image.complete && entry.image.naturalWidth > 0 ? entry.image : undefined
 }
-export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x: number, y: number) {
+export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x: number, y: number, pose: GhostPose = FRONT) {
   ctx.fillStyle = '#263d4366'
   ctx.beginPath(); ctx.ellipse(x * 3, (y + 8) * 3, 21, 5, 0, 0, Math.PI * 2); ctx.fill()
+  // Ground shadow stays anchored. Transform the original image around its center;
+  // never mirror its asymmetric identity or introduce body/stepping frames.
+  ctx.save()
+  const cx = x * 3, cy = (y - 10) * 3
+  ctx.translate(cx + pose.turn * 3, cy + pose.lift * 3)
+  ctx.rotate(pose.turn * 0.07)
+  ctx.transform(1 - Math.abs(pose.turn) * 0.045, 0, pose.turn * 0.055, 1 + pose.pitch * 0.035, 0, pose.pitch * 1.5)
+  ctx.translate(-cx, -cy)
   const image = ghostImage(agent)
   if (image) ctx.drawImage(image, (x - 16) * 3, (y - 26) * 3, 96, 96)
   else {
@@ -44,6 +53,7 @@ export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x:
     ctx.fillRect((x - 4) * 3, (y - 13) * 3, 6, 9)
     ctx.fillRect((x + 2) * 3, (y - 13) * 3, 6, 9)
   }
+  ctx.restore()
 }
 export function paintPortrait(image: HTMLImageElement, agent: VisualAgent) {
   const key = portraitKey(agent)
