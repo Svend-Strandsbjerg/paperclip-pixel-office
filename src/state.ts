@@ -8,11 +8,12 @@ export const ROLES = Object.freeze([
 ] as const)
 export type RoleId = typeof ROLES[number]['id']
 export type Activity = 'idle' | 'working'
-export type VisualAgent = typeof ROLES[number] & { readonly activity: Activity; readonly identity?: Identity }
+export type RosterAgent = Readonly<{ id: string; name: string; role: string; title?: string; status: string; activity: Activity; specialist?: RoleId; appearance?: Identity['appearance']; avatarUrl?: string }>
+export type VisualAgent = { readonly id: string; readonly name: string; readonly palette: number; readonly color: string; readonly col: number; readonly row: number; readonly desk: string; readonly specialist?: RoleId; readonly status?: string; readonly activity: Activity; readonly identity?: Identity }
 export type VisualState = readonly VisualAgent[]
 export type DemoMode = 'mixed' | 'idle' | 'working'
 
-/** External contract: { [roleId]: 'idle' | 'working' }. Fail closed to idle.
+/** Legacy/demo activity contract: { [roleId]: 'idle' | 'working' }. Fail closed to idle.
  * Only own properties and known role IDs are consumed. No transport or API here.
  */
 export function mapVisualState(snapshot: unknown, identities?: Partial<Record<RoleId, Identity>>): VisualState {
@@ -25,9 +26,31 @@ export function mapVisualState(snapshot: unknown, identities?: Partial<Record<Ro
   })))
 }
 
-/** Local fixtures exercise the same mapping boundary as a future external provider. */
+/** Explicit offline demo; live rosters use rosterLayout instead. */
 export function demoSnapshot(mode: DemoMode): Record<RoleId, Activity> {
   return Object.fromEntries(ROLES.map((role, index) => [role.id,
     mode === 'working' || (mode === 'mixed' && index < 2) ? 'working' : 'idle',
   ])) as Record<RoleId, Activity>
+}
+
+/** Allocations survive polling, renames and removals. Sorted first arrivals make API
+ * ordering irrelevant; reserved specialist desks preserve the workflow routes. */
+export function rosterLayout() {
+  const slots = new Map<string, number>()
+  let next = 4
+  return (agents: readonly RosterAgent[]): VisualState => {
+    for (const agent of [...agents].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
+      if (!agent.specialist && !slots.has(agent.id)) slots.set(agent.id, next++)
+    }
+    return Object.freeze(agents.map(agent => {
+      const specialist = ROLES.find(r => r.id === agent.specialist)
+      const slot = specialist ? ROLES.indexOf(specialist) : slots.get(agent.id)!
+      return Object.freeze({ id: agent.id, name: agent.name, specialist: agent.specialist,
+        palette: specialist?.palette ?? 0, color: specialist?.color ?? '#c6ced4',
+        col: slot % 2 ? 17 : 6, row: 6 + Math.floor(slot / 2) * 6,
+        desk: String(slot + 1).padStart(2, '0'), activity: agent.activity, status: agent.status,
+        identity: { name: agent.name, role: agent.title || agent.role, appearance: agent.appearance, avatarUrl: agent.avatarUrl },
+      })
+    }).sort((a, b) => a.row - b.row || a.col - b.col))
+  }
 }

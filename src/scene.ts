@@ -1,4 +1,4 @@
-import { ROLES, type VisualState } from './state'
+import { type VisualState } from './state'
 import { createCharacter } from './vendor/pixel-agents/office/engine/characters'
 import { CharacterState, Direction, TileType, TILE_SIZE } from './vendor/pixel-agents/office/types'
 import type { FurnitureInstance, SpriteData } from './vendor/pixel-agents/office/types'
@@ -14,17 +14,20 @@ export const tiles = Array.from({ length: HEIGHT / TILE_SIZE }, (_, row) =>
 function item(sprite: SpriteData, x: number, y: number, zY = y + sprite.length): FurnitureInstance {
   return { sprite, x, y, zY }
 }
-export const furniture: FurnitureInstance[] = [
+export function sceneSize(state: VisualState) {
+  return { width: WIDTH, height: Math.max(HEIGHT, ...state.map(a => a.row * TILE_SIZE + 80)) }
+}
+export function sceneFurniture(state: VisualState): FurnitureInstance[] { return [
   item(BOOKSHELF_SPRITE, 24, 24), item(BOOKSHELF_SPRITE, 328, 24),
   item(WHITEBOARD_SPRITE, 176, 15), item(COOLER_SPRITE, 344, 218),
   ...[[24, 77], [344, 77], [24, 219], [184, 230]].map(([x, y]) => item(PLANT_SPRITE, x, y)),
-  ...ROLES.flatMap(role => {
+  ...state.flatMap(role => {
     const x = role.col * TILE_SIZE + 8
     const y = role.row * TILE_SIZE + 8
     return [item(CHAIR_SPRITE, x - 8, y - 12, y - 1),
       item(DESK_SQUARE_SPRITE, x - 16, y + 3), item(PC_SPRITE, x - 8, y + 5, y + 36)]
   }),
-]
+] }
 
 /** Pure adapter into the reused renderer's character format. No random allocation. */
 export function sceneCharacters(state: VisualState, elapsed: number, reducedMotion = false) {

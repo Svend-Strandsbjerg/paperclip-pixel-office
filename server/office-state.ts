@@ -1,9 +1,9 @@
 import { avatarMiddleware } from './avatars.ts'
 import { createGithubReader, loadDeliveries } from './pipeline.ts'
 import { demoDeliveries, type Delivery } from '../src/pipeline.ts'
-import { normalizeAppearance, identityText, type Identity } from '../src/identity.ts'
+import { normalizeAppearance, normalizeAvatarUrl, identityText, type Identity } from '../src/identity.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { ROLES, demoSnapshot, type Activity, type RoleId } from '../src/state.ts'
+import { ROLES, demoSnapshot, type Activity, type RoleId, type RosterAgent } from '../src/state.ts'
 
 import type { Task } from '../src/handoff.ts'
 
@@ -73,29 +73,35 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
   const url = new URL(env.PAPERCLIP_API_URL || '')
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Invalid URL')
   const ids = JSON.parse(env.PAPERCLIP_AGENT_ROLES || '{}') as Record<RoleId, string>
-  if (!ids || ROLES.some(r => typeof ids[r.id] !== 'string' || !ids[r.id].trim()) || new Set(ROLES.map(r => ids[r.id])).size !== 4) throw new Error('Invalid mapping')
+  if (!ids || typeof ids !== 'object' || Array.isArray(ids) || Object.entries(ids).some(([role, id]) => !ROLES.some(r => r.id === role) || typeof id !== 'string' || !id.trim()) || new Set(Object.values(ids)).size !== Object.values(ids).length) throw new Error('Invalid mapping')
   if (!env.PAPERCLIP_COMPANY_ID || !env.PAPERCLIP_API_KEY) throw new Error('Missing configuration')
   return { mode: 'live', url: url.href.replace(/\/$/, ''), company: env.PAPERCLIP_COMPANY_ID, key: env.PAPERCLIP_API_KEY, ids }
 }
 
-export function mapAgents(input: unknown, ids: Record<RoleId, string>): Record<RoleId, Activity> {
+/** Roster identity comes exclusively from the company agent list. Workflow mappings
+ * annotate specialists; they neither filter nor manufacture visible agents. */
+export function mapRoster(input: unknown, ids: Partial<Record<RoleId, string>> = {}): RosterAgent[] {
   if (!Array.isArray(input)) throw new Error('Invalid upstream response')
-  return Object.fromEntries(ROLES.map(role => {
-    const matches = input.filter(a => a && typeof a === 'object' && a.id === ids[role.id])
-    // Missing/duplicate mapped agents indicate a stale mapping, not a healthy idle agent.
-    if (matches.length !== 1 || typeof matches[0].status !== 'string' || !matches[0].status) throw new Error('Invalid mapped agent')
-    return [role.id, matches[0].status === 'running' ? 'working' : 'idle']
-  })) as Record<RoleId, Activity>
-}
-
-export function mapIdentities(input: unknown, ids: Record<RoleId, string>): Record<RoleId, Identity> {
-  mapAgents(input, ids) // Same strict mapping boundary as activity.
-  const agents = input as Record<string, unknown>[]
-  return Object.fromEntries(ROLES.map(role => {
-    const agent = agents.find(a => a.id === ids[role.id])!
+  const seen = new Set<string>()
+  return input.map(agent => {
+    if (!agent || typeof agent.id !== 'string' || !agent.id || seen.has(agent.id) || typeof agent.status !== 'string' || !agent.status) throw new Error('Invalid agent')
+    seen.add(agent.id)
+    const specialist = ROLES.find(r => ids[r.id] === agent.id)?.id
     const appearance = normalizeAppearance(agent.appearance)
-    return [role.id, { name: identityText(agent.name, role.name), role: identityText(agent.role, role.name), ...(appearance ? { appearance } : {}) }]
-  })) as Record<RoleId, Identity>
+    const avatarUrl = normalizeAvatarUrl(agent.avatarUrl)
+    return { id: agent.id, name: identityText(agent.name, 'Unnamed agent'), role: identityText(agent.role, 'Agent'),
+      ...(typeof agent.title === 'string' ? { title: identityText(agent.title, 'Agent') } : {}),
+      status: identityText(agent.status, 'unknown'), activity: agent.status === 'running' ? 'working' : 'idle',
+      ...(specialist ? { specialist } : {}), ...(appearance ? { appearance } : {}), ...(avatarUrl ? { avatarUrl } : {}),
+    }
+  })
+}
+export function mapAgents(input: unknown, ids: Partial<Record<RoleId, string>>): Record<string, Activity> {
+  return Object.fromEntries(mapRoster(input, ids).map(a => [a.id, a.activity]))
+}
+export function mapIdentities(input: unknown, ids: Partial<Record<RoleId, string>>): Record<string, Identity> {
+  return Object.fromEntries(mapRoster(input, ids).map(a => [a.id, { name: a.name, role: a.title || a.role,
+    ...(a.appearance ? { appearance: a.appearance } : {}), ...(a.avatarUrl ? { avatarUrl: a.avatarUrl } : {}) }]))
 }
 export const demoIdentities = Object.fromEntries(ROLES.map(role => [role.id, {
   name: role.name, role: role.name,
@@ -116,7 +122,8 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
     }
     try {
       const config = readConfig(env)
-      let snapshot = demoSnapshot('mixed')
+      let snapshot: Record<string, Activity> = demoSnapshot('mixed')
+      let roster: RosterAgent[] | undefined
       let identities: unknown = demoIdentities
       let tasks: Task[] | null = null
       let deliveries: Delivery[] | null = config.mode === 'demo' ? demoDeliveries : null
@@ -127,6 +134,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
         })
         if (!upstream.ok) throw new Error('Upstream unavailable')
         const agents: unknown = await upstream.json()
+        roster = mapRoster(agents, config.ids!)
         snapshot = mapAgents(agents, config.ids!)
         identities = mapIdentities(agents, config.ids!)
         // Independent failure boundary: issue reads must never hide agent activity.
@@ -146,6 +154,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
             issueFailure = `issue limit ${ISSUE_LIMIT} reached; snapshot may be incomplete`
             throw new Error('Incomplete issues')
           }
+          if (!ROLES.every(r => config.ids?.[r.id])) throw new Error('Workflow mapping unavailable')
           tasks = mapTasks(input, config.ids!)
           try {
             const deadline = AbortSignal.timeout(1500)
@@ -162,7 +171,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
           console.warn(`[office-state] Issue read failed: ${issueFailure}; task handoffs unavailable, agent activity retained`)
         }
       }
-      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, tasks, deliveries }))
+      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, ...(roster ? { agents: roster } : {}), tasks, deliveries }))
     } catch {
       res.statusCode = 503
       res.end(JSON.stringify({ error: 'Office state unavailable' }))

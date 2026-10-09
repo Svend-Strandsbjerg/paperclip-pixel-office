@@ -83,7 +83,7 @@ test('real HTTP upstream stays read-only, sanitizes tasks, survives outage and r
   const url = await listen(server)
   t.after(() => close(server))
   const state = await (await fetch(url + '/api/office-state')).json()
-  assert.equal(state.snapshot.developer, 'working')
+  assert.equal(state.snapshot[ids.developer], 'working')
   assert.deepEqual(state.tasks, [{ taskId: 'DEV-1', title: 'Safe title' }])
   assert.ok(!JSON.stringify(state).includes('private-test-token'))
   assert.deepEqual(requests, ['GET /api/companies/test-company/agents', 'GET /api/companies/test-company/issues?limit=1000'])

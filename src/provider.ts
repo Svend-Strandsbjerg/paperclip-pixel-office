@@ -1,9 +1,9 @@
 import { parseDeliveries } from './pipeline-view'
 import type { Delivery } from './pipeline'
-import { normalizeAppearance, identityText, type Identity } from './identity'
+import { normalizeAppearance, normalizeAvatarUrl, identityText, type Identity } from './identity'
 import { handoffTracker, type Handoff, type Task } from './handoff'
-import { ROLES, type Activity, type RoleId } from './state'
-export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<RoleId, Activity>; identities?: Partial<Record<RoleId, Identity>>; tasks?: Task[] | null; deliveries?: Delivery[] | null }
+import { ROLES, type Activity, type RoleId, type RosterAgent } from './state'
+export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<string, Activity>; agents?: RosterAgent[]; identities?: Record<string, Identity>; tasks?: Task[] | null; deliveries?: Delivery[] | null }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
@@ -13,20 +13,36 @@ export function parseSnapshot(value: unknown): OfficeSnapshot {
   if (!isPlainObject(value) || !Object.hasOwn(value, 'mode') || !Object.hasOwn(value, 'snapshot') ||
       (value.mode !== 'live' && value.mode !== 'demo') || !isPlainObject(value.snapshot)) throw new Error('Invalid office state')
   const snapshot = value.snapshot
-  if (ROLES.some(r => !Object.hasOwn(snapshot, r.id) || !['idle', 'working'].includes(snapshot[r.id] as string))) throw new Error('Invalid office state')
+  if (Object.values(snapshot).some(activity => !['idle', 'working'].includes(activity as string))) throw new Error('Invalid office state')
   const result: OfficeSnapshot = {
     mode: value.mode,
-    snapshot: Object.fromEntries(ROLES.map(r => [r.id, snapshot[r.id]])) as Record<RoleId, Activity>,
+    snapshot: Object.fromEntries(Object.entries(snapshot)) as Record<string, Activity>,
   }
   if (Object.hasOwn(value, 'identities')) {
     if (!isPlainObject(value.identities)) throw new Error('Invalid identities')
     result.identities = {}
-    for (const role of ROLES) {
-      const identity = value.identities[role.id]
+    for (const id of Object.keys(snapshot)) {
+      const identity = value.identities[id]
       if (!isPlainObject(identity) || typeof identity.name !== 'string' || typeof identity.role !== 'string') throw new Error('Invalid identity')
-      const appearance = normalizeAppearance(identity.appearance)
-      result.identities[role.id] = Object.freeze({ name: identityText(identity.name, role.name), role: identityText(identity.role, role.name), ...(appearance ? { appearance } : {}) })
+      const appearance = normalizeAppearance(identity.appearance);
+      (result.identities as Record<string, Identity>)[id] = Object.freeze({ name: identityText(identity.name, 'Unnamed agent'), role: identityText(identity.role, 'Agent'), ...(appearance ? { appearance } : {}), ...(normalizeAvatarUrl(identity.avatarUrl) ? { avatarUrl: normalizeAvatarUrl(identity.avatarUrl) } : {}) })
     }
+  }
+  if (Object.hasOwn(value, 'agents')) {
+    if (!Array.isArray(value.agents)) throw new Error('Invalid roster')
+    const ids = new Set<string>(), specialists = new Set<string>()
+    result.agents = value.agents.map(agent => {
+      if (!isPlainObject(agent) || typeof agent.id !== 'string' || !agent.id || ids.has(agent.id) ||
+          typeof agent.name !== 'string' || typeof agent.role !== 'string' || typeof agent.status !== 'string' ||
+          !['idle', 'working'].includes(agent.activity as string)) throw new Error('Invalid agent')
+      ids.add(agent.id)
+      if (agent.specialist !== undefined && (!ROLES.some(r => r.id === agent.specialist) || specialists.has(agent.specialist as string))) throw new Error('Invalid specialist')
+      if (agent.specialist) specialists.add(agent.specialist as string)
+      return { id: agent.id, name: identityText(agent.name, 'Unnamed agent'), role: identityText(agent.role, 'Agent'),
+        ...(typeof agent.title === 'string' ? { title: identityText(agent.title, 'Agent') } : {}),
+        status: identityText(agent.status, 'unknown'), activity: agent.activity as Activity,
+        specialist: agent.specialist as RoleId | undefined, appearance: normalizeAppearance(agent.appearance), avatarUrl: normalizeAvatarUrl(agent.avatarUrl) }
+    })
   }
   if (Object.hasOwn(value, 'tasks')) {
     if (value.tasks == null) result.tasks = value.tasks

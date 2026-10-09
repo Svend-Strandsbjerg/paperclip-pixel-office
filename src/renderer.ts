@@ -2,7 +2,7 @@ import { paintGhost, paintStudio } from './art'
 import { handoffPose, handoffQueue, type Handoff } from './handoff'
 import { CharacterState, Direction } from './vendor/pixel-agents/office/types'
 import type { VisualState } from './state'
-import { WIDTH, HEIGHT, furniture, sceneCharacters } from './scene'
+import { sceneSize, sceneFurniture, sceneCharacters } from './scene'
 import { renderScene } from './vendor/pixel-agents/office/engine/renderer'
 import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 
@@ -11,6 +11,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   let state = initialState
   let elapsed = 0
   let active: { event: Handoff; seconds: number } | undefined
+  const hasParticipants = (event: Handoff) => [event.source, event.target].every(role => state.some(a => (a.specialist ?? a.id) === role))
   const queue = handoffQueue()
   const bubble = document.createElement('div')
   bubble.className = 'task-bubble'
@@ -26,6 +27,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       bubble.dataset.target = next.event.target
       canvas.dataset.target = next.event.target
     }
+    if (next && !hasParticipants(next.event)) { queue.clear(); active = undefined; bubble.hidden = true; return }
     active = next
     const phase = active ? (motion.matches ? 'bubble' : handoffPose(active.seconds, active.event.target).phase) : 'rest'
     if (canvas.dataset.handoff !== phase) canvas.dataset.handoff = phase
@@ -35,8 +37,14 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   const onVisibility = () => { if (document.hidden) { queue.clear(); updateHandoff() } }
   document.addEventListener('visibilitychange', onVisibility)
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)')
-  canvas.width = WIDTH * 3
-  canvas.height = HEIGHT * 3
+  function resize() {
+    const size = sceneSize(state)
+    canvas.width = size.width * 3
+    canvas.height = size.height * 3
+    bubble.style.setProperty('--bubble-top', `${14 / size.height * 100}%`)
+    bubble.style.setProperty('--qa-bubble-top', `${92 / size.height * 100}%`)
+  }
+  resize()
   const stop = startGameLoop(canvas, {
     update: dt => { elapsed += dt; updateHandoff() },
     render: ctx => {
@@ -45,13 +53,13 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       const characters = sceneCharacters(state, elapsed, motion.matches)
       if (active && !motion.matches) {
         const pose = handoffPose(active.seconds, active.event.target)
-        const visitor = characters[0]
+        const visitor = characters[state.findIndex(a => (a.specialist ?? a.id) === 'orchestrator')]
         visitor.x = pose.x; visitor.y = pose.y
         visitor.state = pose.phase === 'bubble' ? CharacterState.IDLE : CharacterState.WALK
         visitor.dir = pose.phase === 'bubble' ? (active.event.target === 'browser-qa' ? Direction.LEFT : Direction.RIGHT) : pose.dx ? (pose.dx > 0 ? Direction.RIGHT : Direction.LEFT) : (pose.dy > 0 ? Direction.DOWN : Direction.UP)
         visitor.frame = Math.floor(elapsed / 0.15) % 4
       }
-      renderScene(ctx, furniture, [], 0, 0, 3, null, null)
+      renderScene(ctx, sceneFurniture(state), [], 0, 0, 3, null, null)
       for (const character of characters) {
         // Existing routes remain intact; the ghost hovers in front of its computer.
         paintGhost(ctx, state[character.id], character.x, character.y + 44)
@@ -65,5 +73,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       }
     },
   })
-  return { setState: (next: VisualState) => { state = next }, handoff: (event: Handoff) => { if (!document.hidden) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
+  return { setState: (next: VisualState) => { state = next; resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }
