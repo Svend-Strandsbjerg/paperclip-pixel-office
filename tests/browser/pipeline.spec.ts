@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test'
+import { demoDeliveries } from '../../src/pipeline'
+import { demoSnapshot } from '../../src/state'
 
 for (const width of [1440, 375, 320]) {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
@@ -48,4 +50,38 @@ test('pipeline smoke: demo rail renders and does not obscure office or handoff c
   await page.getByRole('button',{name:'Demo Rework handoff',exact:true}).click()
   await expect(page.locator('canvas')).toHaveAttribute('data-target','developer')
   await expect(pipeline.getByText('Ready for human merge')).toBeVisible()
+})
+
+// Exercise the real serial live poller against controlled projected API responses.
+test('unchanged live polls preserve PR keyboard focus and SHA text selection', async ({ page }) => {
+  let polls = 0
+  let changed = false
+  await page.route('**/api/office-state', async route => {
+    polls++
+    await route.fulfill({json:{mode:'live',snapshot:demoSnapshot('mixed'),tasks:[],deliveries:changed ? [] : demoDeliveries}})
+  })
+  await page.goto('/')
+  const pipeline=page.getByRole('region',{name:'Delivery pipeline overview'})
+  const link=pipeline.getByRole('link')
+  await expect(link).toBeVisible()
+  await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+  await link.focus()
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Tab')
+  await expect(link).toBeFocused()
+  const sha=pipeline.locator('p.delivery-sha')
+  const selected=await sha.evaluate(element=>{
+    const range=document.createRange();range.selectNodeContents(element)
+    const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range)
+    return selection.toString()
+  })
+  const before=polls
+  await expect.poll(()=>polls).toBeGreaterThanOrEqual(before+2)
+  // Confirm the response has passed through the renderer before checking identity.
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+  await expect(link).toBeFocused()
+  expect(await page.evaluate(()=>window.getSelection()?.toString())).toBe(selected)
+  changed=true
+  await expect(pipeline.getByText('No active delivery parents.')).toBeVisible()
+  await expect(link).toHaveCount(0)
 })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { candidates, derive, loadDeliveries, prIdentity } from '../server/pipeline'
+import { createGithubReader, GITHUB_TTL_MS, candidates, derive, loadDeliveries, prIdentity } from '../server/pipeline'
 import { demoDeliveries, STAGES } from '../src/pipeline'
 import { parseDeliveries } from '../src/pipeline-view'
 const ids = { orchestrator:'o', developer:'d', 'browser-qa':'q', reviewer:'r' }
@@ -102,4 +102,61 @@ test('conflicting stage SHAs and overlapping prior work cannot establish readine
   const p=products();p.get(children[0].id)!.push({...p.get(children[0].id)![0],metadata:{delivery:{sha:B,outcome:'passed'}}})
   assert.equal(derive({parent,children},ids,p,pr).gates[0].state,'unknown')
   assert.equal(result([...children,{...child('developer',-2,'in_progress')}]).merge,'waiting')
+})
+
+const githubResponse = (head = A) => Response.json({number:1,html_url:pr.url,state:'open',merged:false,head:{sha:head,ref:'feature'},base:{ref:'main',repo:{full_name:pr.repository}}})
+test('shared reader coalesces browsers and deliveries, canonicalizes identity, expires changed heads', async () => {
+  let now = 0, calls = 0, head = A
+  const fetcher: typeof fetch = async (_url, options) => { calls++; assert.equal(options?.method,'GET'); return githubResponse(head) }
+  const github = createGithubReader(fetcher, undefined, () => now)
+  const p = products(); p.set('p',[])
+  const load = () => loadDeliveries([parent,...children],ids,async path=>p.get(path.split('/')[3]),fetcher,undefined,github)
+  const output = await Promise.all([load(),load(),load()])
+  assert.ok(output.every(d=>d[0].merge==='ready')); assert.equal(calls,1)
+  await github({...pr, repository:'OWNER/REPO',url:pr.url.toUpperCase()})
+  assert.equal(calls,1)
+  head = B; now = GITHUB_TTL_MS - 1
+  assert.equal((await load())[0].pr?.head,A)
+  now++
+  assert.ok((await load())[0].gates.every(g=>g.state==='invalidated'))
+  assert.equal(calls,2)
+})
+test('anonymous aggregate budget stays below 60 reads/hour even across many identities', async () => {
+  let now = 0, calls = 0
+  const github = createGithubReader(async()=>{calls++;return githubResponse()},undefined,()=>now)
+  for (;now<3_600_000;now+=1500) {
+    await Promise.all(Array.from({length:10},(_,i)=>github({...pr,number:i+1})))
+  }
+  assert.ok(calls<=48, String(calls))
+})
+test('expired heads fail closed and retry/reset signals back off across PR identities', async () => {
+  for (const headers of [{'retry-after':'600'}, {'retry-after':new Date(720_000).toUTCString()}, {'x-ratelimit-remaining':'0','x-ratelimit-reset':'720'}]) {
+    let now = 0, calls = 0
+    const github = createGithubReader(async()=>++calls===1?githubResponse():Response.json({}, {status:429,headers:headers as Record<string,string>}), 'token',()=>now)
+    assert.equal((await github(pr))?.head,A)
+    now = GITHUB_TTL_MS
+    assert.equal(await github(pr),undefined)
+    now = 719_999
+    assert.equal(await github(pr),undefined)
+    assert.equal(await github({...pr,number:2}),undefined)
+    assert.equal(calls,2)
+    now = 720_000; await github(pr); assert.equal(calls,3)
+  }
+})
+test('network/invalid responses back off, recover, and bound hostile retry signals', async () => {
+  let now=0, calls=0
+  const github=createGithubReader(async()=>{
+    calls++
+    if(calls===1) throw Error('offline')
+    if(calls===2) return Response.json({})
+    if(calls===3) return Response.json({}, {status:403,headers:{'retry-after':'999999999'}})
+    return githubResponse()
+  },'token',()=>now)
+  assert.equal(await github(pr),undefined)
+  now=4999;await github(pr);assert.equal(calls,1)
+  now=5000;assert.equal(await github(pr),undefined)
+  now=14999;await github(pr);assert.equal(calls,2)
+  now=15000;assert.equal(await github(pr),undefined)
+  now+=3_600_000-1;await github(pr);assert.equal(calls,3)
+  now++;assert.equal((await github(pr))?.head,A);assert.equal(calls,4)
 })

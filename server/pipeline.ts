@@ -63,7 +63,60 @@ export function derive(candidate: Candidate, ids: Record<RoleId, string>, produc
   }
   return { issue: candidate.parent.identifier, title: label(candidate.parent.title), status: candidate.parent.status, gates, ...(pr ? { pr } : {}), merge: pr?.state === 'merged' ? 'merged' : chain ? 'ready' : 'waiting', notice: !pr ? 'PR identity or current GitHub head unavailable' : gates.some(g => g.state === 'unknown') ? 'Structured gate evidence unavailable' : 'Human merge only' }
 }
-export async function loadDeliveries(input: unknown, ids: Record<RoleId,string>, read: (path: string) => Promise<unknown>, fetcher: typeof fetch, token?: string): Promise<Delivery[]> {
+// Two-minute freshness window. Expired values are never served after a failed read.
+export const GITHUB_TTL_MS = 120_000
+export function createGithubReader(fetcher: typeof fetch, token?: string, now = Date.now) {
+  type Identity = NonNullable<ReturnType<typeof prIdentity>>
+  type Entry = { until: number; value?: PullRequest; pending?: Promise<PullRequest | undefined> }
+  const cache = new Map<string, Entry>()
+  let nextRequest = 0
+  let failures = 0
+  return async (identity: Identity): Promise<PullRequest | undefined> => {
+    const key = `${identity.repository.toLowerCase()}/${identity.number}`
+    const existing = cache.get(key)
+    if (existing?.pending) {
+      const value = await existing.pending
+      return value ? { ...value, ...identity } : undefined
+    }
+    if (existing && now() < existing.until) return existing.value ? { ...existing.value, ...identity } : undefined
+    if (now() < nextRequest) return undefined
+    // At most 48 anonymous reads/hour across all PRs and browsers, leaving headroom.
+    nextRequest = now() + (token ? 1000 : 75_000)
+    if (cache.size >= 1000) {
+      for (const [id, entry] of cache) if (!entry.pending && entry.until <= now()) cache.delete(id)
+      if (cache.size >= 1000 && !existing) return undefined
+    }
+    const entry: Entry = { until: 0 }
+    cache.set(key, entry)
+    entry.pending = (async () => {
+      try {
+        const response = await fetcher(`https://api.github.com/repos/${identity.repository}/pulls/${identity.number}`, { method: 'GET', redirect: 'error', headers: { Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, signal: AbortSignal.timeout(1500) })
+        const retry = response.headers.get('retry-after')
+        const reset = response.headers.get('x-ratelimit-reset')
+        const retryAt = retry ? (/^\d+$/.test(retry) ? now() + Number(retry) * 1000 : Date.parse(retry)) : 0
+        const resetAt = response.headers.get('x-ratelimit-remaining') === '0' && reset ? Number(reset) * 1000 : 0
+        // Server signals apply across identities; clamp to one hour, never spin/retry inline.
+        const signalled = Math.max(Number.isFinite(retryAt) ? retryAt : 0, Number.isFinite(resetAt) ? resetAt : 0)
+        nextRequest = Math.max(nextRequest, Math.min(now() + 3_600_000, signalled))
+        if (!response.ok) throw new Error('Unavailable')
+        const data = await response.json()
+        if (data.number !== identity.number || typeof data.html_url !== 'string' || data.html_url.toLowerCase() !== identity.url.toLowerCase() || data.base?.repo?.full_name?.toLowerCase() !== identity.repository.toLowerCase() || !exactSha(data.head?.sha) || typeof data.head?.ref !== 'string' || typeof data.base?.ref !== 'string' || !['open','closed'].includes(data.state) || typeof data.merged !== 'boolean') throw new Error('Invalid PR')
+        entry.value = { ...identity, head: data.head.sha, branch: label(data.head.ref), base: label(data.base.ref), state: data.merged ? 'merged' : data.state }
+        entry.until = now() + GITHUB_TTL_MS
+        failures = 0
+        return entry.value
+      } catch {
+        failures = Math.min(failures + 1, 7)
+        nextRequest = Math.max(nextRequest, now() + Math.min(300_000, 5000 * 2 ** (failures - 1)))
+        // No stale green gates, including while rate limited or backing off.
+        return undefined
+      } finally { entry.pending = undefined }
+    })()
+    return entry.pending
+  }
+}
+
+export async function loadDeliveries(input: unknown, ids: Record<RoleId,string>, read: (path: string) => Promise<unknown>, fetcher: typeof fetch, token?: string, github = createGithubReader(fetcher, token)): Promise<Delivery[]> {
   const selected = candidates(input, ids)
   const products = new Map<string, Product[]>()
   // Only direct members of selected deliveries are read. Bounded worker pool.
@@ -80,14 +133,7 @@ export async function loadDeliveries(input: unknown, ids: Record<RoleId,string>,
     const refs = all.map(p => p.provider === 'github' ? prIdentity(p.url) : undefined)
     const identity = refs[0]
     if (members.every(i => products.has(i.id)) && identity && refs.every(r => r?.url === identity.url)) {
-      try {
-        const response = await fetcher(`https://api.github.com/repos/${identity.repository}/pulls/${identity.number}`, { method: 'GET', redirect: 'error', headers: { Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, signal: AbortSignal.timeout(1500) })
-        if (!response.ok) throw new Error('Unavailable')
-        const data = await response.json()
-        if (data.number === identity.number && data.html_url === identity.url && data.base?.repo?.full_name === identity.repository && exactSha(data.head?.sha) && typeof data.head?.ref === 'string' && typeof data.base?.ref === 'string' && ['open','closed'].includes(data.state) && typeof data.merged === 'boolean') {
-          pr = { ...identity, head: data.head.sha, branch: label(data.head.ref), base: label(data.base.ref), state: data.merged ? 'merged' : data.state }
-        }
-      } catch { /* GitHub cannot disable the office or retain a stale green gate. */ }
+      pr = await github(identity)
     }
     return derive(c, ids, products, pr)
   }))

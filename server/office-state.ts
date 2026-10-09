@@ -1,4 +1,4 @@
-import { loadDeliveries } from './pipeline.ts'
+import { createGithubReader, loadDeliveries } from './pipeline.ts'
 import { demoDeliveries, type Delivery } from '../src/pipeline.ts'
 import { appearancePalette, identityText, type Identity } from '../src/identity.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -100,7 +100,8 @@ export const demoIdentities = Object.fromEntries(ROLES.map((role, i) => [role.id
   name: role.name, role: role.name, paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i],
 }]))
 
-export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch) {
+export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch, now = Date.now) {
+  const github = createGithubReader(fetcher, env.OFFICE_GITHUB_TOKEN, now)
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (req.url?.split('?')[0] !== '/api/office-state') return next()
     res.setHeader('Content-Type', 'application/json')
@@ -151,7 +152,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
               const response = await fetcher(`${config.url}${path}`, { method: 'GET', headers: { Authorization: `Bearer ${config.key}` }, redirect: 'error', signal: deadline })
               if (!response.ok) throw new Error('Evidence unavailable')
               return response.json()
-            }, fetcher, env.OFFICE_GITHUB_TOKEN)
+            }, fetcher, env.OFFICE_GITHUB_TOKEN, github)
           } catch { deliveries = null }
         } catch {
           tasks = null

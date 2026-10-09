@@ -23,7 +23,11 @@ export function parseDeliveries(input: unknown): Delivery[] | null {
   } catch { return null }
 }
 const names = { developer: 'Developer', 'browser-qa': 'Browser QA', reviewer: 'Reviewer' }
+const rendered = new WeakMap<HTMLElement, string>()
 export function renderPipeline(root: HTMLElement, deliveries: Delivery[] | null | undefined) {
+  const payload = JSON.stringify(deliveries ?? null)
+  if (rendered.get(root) === payload) return
+  rendered.set(root, payload)
   root.replaceChildren()
   const add = (parent: HTMLElement, tag: string, text: string, cls = '') => {
     const node = document.createElement(tag); node.textContent = text; node.className = cls; parent.append(node); return node

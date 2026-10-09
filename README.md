@@ -46,7 +46,7 @@ Paperclip GET agents → server stable-ID/status mapping → GET /api/office-sta
 - `src/scene.ts`: tile layout, permanent furniture and the pure adapter to upstream character types.
 - `src/renderer.ts`: renders supplied visual state; no fetch, socket, provider import or Paperclip API dependency. Its returned `setState()` accepts a replacement visual snapshot; `destroy()` cancels the animation loop.
 - `server/office-state.ts`: server-only configuration, read-only upstream request, strict ID mapping and sanitized responses. `server/index.ts` mounts it in production; `vite.config.ts` mounts it for development and optional local preview.
-- `src/provider.ts`: validates browser responses and polls every 1.5 seconds after completion, with a eleven-second timeout and no overlapping requests.
+- `src/provider.ts`: validates browser responses and polls every 1.5 seconds after completion, with an eleven-second timeout and no overlapping requests.
 - `src/main.ts`: connection indication, live updates, local demo controls and accessible DOM roster/desk labels. These use the same mapped state as the Canvas. No persisted state is required to keep identity deterministic.
 - `src/vendor/pixel-agents`: a bounded reuse of existing Canvas rendering, sprite definitions/cache, depth ordering and frame selection. See [foundation selection](docs/foundation.md) and [third-party inventory](THIRD_PARTY.md).
 

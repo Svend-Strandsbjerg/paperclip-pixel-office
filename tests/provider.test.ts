@@ -21,8 +21,8 @@ test('configuration requires explicit unique IDs and never defaults to demo', ()
   assert.throws(() => readConfig({ ...env, PAPERCLIP_AGENT_ROLES: JSON.stringify({ ...ids, developer: 'a' }) }))
   assert.deepEqual(readConfig({ OFFICE_MODE: 'demo' }), { mode: 'demo' })
 })
-async function withBridge(config: NodeJS.ProcessEnv, fetcher: typeof fetch, run: (url: string) => Promise<void>) {
-  const middleware = officeMiddleware(config, fetcher)
+async function withBridge(config: NodeJS.ProcessEnv, fetcher: typeof fetch, run: (url: string) => Promise<void>, now = Date.now) {
+  const middleware = officeMiddleware(config, fetcher, now)
   const server = createServer((req, res) => { void middleware(req, res, () => { res.statusCode = 404; res.end() }) })
   server.listen(0, '127.0.0.1'); await once(server, 'listening')
   try { await run(`http://127.0.0.1:${(server.address() as {port: number}).port}/api/office-state`) }
@@ -143,11 +143,12 @@ test('live pipeline bridge keeps agents on GitHub outage and exposes only struct
   const parent={id:'p',identifier:'DEV-1',title:'Delivery',status:'in_progress',assigneeAgentId:ids.orchestrator}
   const roles=['developer','browser-qa','reviewer'] as const
   const children=roles.map((role,i)=>({id:role,identifier:`DEV-${i+2}`,title:role,parentId:'p',assigneeAgentId:ids[role],status:'done',createdAt:new Date(i*2000).toISOString(),completedAt:new Date(i*2000+1000).toISOString()}))
-  let broken=false
+  let broken=false, now=0, githubCalls=0
   await withBridge({...env,OFFICE_GITHUB_TOKEN:'github-secret'},async(url,options)=>{
     assert.equal(options?.method,'GET');assert.equal(options?.redirect,'error')
     const u=new URL(String(url))
     if(u.hostname==='api.github.com') {
+      githubCalls++
       assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer github-secret')
       if(broken) return new Response('private',{status:503})
       return Response.json({number:1,html_url:prUrl,state:'open',merged:false,head:{sha,ref:'feature'},base:{ref:'main',repo:{full_name:'owner/repo'}},private:'github-secret'})
@@ -161,7 +162,15 @@ test('live pipeline bridge keeps agents on GitHub outage and exposes only struct
     const ready=await(await fetch(url)).json();assert.equal(ready.deliveries[0].merge,'ready')
     assert.ok(!JSON.stringify(ready).includes('secret'));assert.ok(!JSON.stringify(ready).includes('metadata'))
     broken=true
+    const cached=await Promise.all([fetch(url).then(r=>r.json()),fetch(url).then(r=>r.json())])
+    assert.ok(cached.every(d=>d.deliveries[0].merge==='ready'));assert.equal(githubCalls,1)
+    now=120_000
     const unavailable=await(await fetch(url)).json();assert.equal(unavailable.deliveries[0].merge,'waiting')
     assert.deepEqual(unavailable.snapshot,ready.snapshot);assert.deepEqual(unavailable.tasks,ready.tasks)
-  })
+    assert.equal(githubCalls,2)
+    await fetch(url);assert.equal(githubCalls,2)
+    broken=false;now+=5000
+    assert.equal((await(await fetch(url)).json()).deliveries[0].merge,'ready')
+    assert.equal(githubCalls,3)
+  },()=>now)
 })
