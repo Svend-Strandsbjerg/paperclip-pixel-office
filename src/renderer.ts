@@ -2,6 +2,7 @@ import { paintGhost, paintStudio } from './art'
 import { deliveryPose, handoffQueue, type Handoff } from './handoff'
 import { ambientMotion } from './ambient'
 import { ghostMotion } from './ghost-motion'
+import { paintWorkActivity, workActivities } from './work-activities'
 import type { VisualState } from './state'
 import { sceneSize, sceneFurniture } from './scene'
 import { renderScene } from './vendor/pixel-agents/office/engine/renderer'
@@ -13,6 +14,8 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   let elapsed = 0
   let frameDelta = 0
   const ghosts = ghostMotion()
+  const activities = workActivities()
+  activities.sync(state)
   const ambient = ambientMotion()
   ambient.sync(state)
   ghosts.sync(state.map(agent => agent.id))
@@ -61,6 +64,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       paintStudio(ctx, state)
       const travel = active && !motion.matches ? travelPose(active.event, active.seconds) : undefined
       const courier = active ? participant(active.event.source)?.id : undefined
+      const recipient = active ? participant(active.event.target)?.id : undefined
       renderScene(ctx, furniture, [], 0, 0, 3, null, null)
       for (const agent of state) {
         const visitor = courier === agent.id ? travel : undefined
@@ -70,6 +74,9 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
         const x = (visitor?.x ?? agent.col * 16 + 8) + offset.x
         const y = ((visitor?.y ?? agent.row * 16 + 8) + offset.y) + 44
         paintGhost(ctx, agent, x, y, pose)
+        const interrupted = !!active && (courier === agent.id || recipient === agent.id)
+        const activity = activities.sample(agent.id, frameDelta, motion.matches, interrupted || Math.hypot(offset.x, offset.y) > 0.5)
+        if (activity) paintWorkActivity(ctx, { x: agent.col * 16 + 8, y: agent.row * 16 + 8 + 44 }, activity, 3)
         if (courier === agent.id && (motion.matches || travel?.carrying)) {
           // Pixel document is attached to the courier, never ambient movement.
           ctx.fillStyle = '#596575'
@@ -90,5 +97,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       }
     },
   })
-  return { setState: (next: VisualState) => { state = next; ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); furniture = sceneFurniture(state); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
+  return { setState: (next: VisualState) => { state = next; activities.sync(state); ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); furniture = sceneFurniture(state); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }

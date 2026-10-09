@@ -164,8 +164,9 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
 })
 
 // Reduced-motion assignments keep every ghost at rest and add a document beside
-// the orchestrator (scene 104, 148; canvas scale 3). Mask only that 24x30 region
-// so movement or facing changes anywhere else still fail the pixel comparison.
+// the orchestrator (scene 104, 148; canvas scale 3). Mask that document and
+// only the two participants’ decorative effect regions; all avatar pixels and
+// nonparticipant effects must remain identical.
 async function reducedMotionFrame(canvas: Locator) {
   return canvas.evaluate((node: HTMLCanvasElement) => {
     const copy = document.createElement('canvas')
@@ -175,6 +176,7 @@ async function reducedMotionFrame(canvas: Locator) {
     const colorAt = (x: number, y: number) => Array.from(context.getImageData(x, y, 1, 1).data)
     const documentColors = [colorAt(336, 390), colorAt(339, 393), colorAt(342, 402)]
     context.clearRect(336, 390, 24, 30)
+    for (const x of [104, 280]) context.clearRect((x + 20) * 3, (148 - 34) * 3, 48 * 3, 24 * 3)
     return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentColors }
   })
 }
@@ -413,3 +415,37 @@ test('demo rework uses the shared movement path and leaves live activity alone',
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'returning', { timeout: 5000 })
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest', { timeout: 6000 })
 })
+
+for (const width of [390, 1440]) for (const reducedMotion of ['reduce', 'no-preference'] as const) {
+  test(`work effects clear every label at ${width}px with ${reducedMotion}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.emulateMedia({ reducedMotion })
+    let count = 4
+    await page.route('**/api/office-state', route => route.fulfill({ json: {
+      mode: 'live', snapshot: {}, tasks: [],
+      agents: Array.from({ length: count }, (_, i) => ({ id: `worker-${i}`, name: `Working colleague ${i}`, role: 'general', status: 'running', activity: 'working' })),
+    } }))
+    await page.goto('/')
+    for (const size of [4, 40]) {
+      count = size
+      await expect(page.locator('.desk-label')).toHaveCount(size)
+      const overlaps = await page.evaluate(() => {
+        const canvas = document.querySelector('canvas')!
+        const box = canvas.getBoundingClientRect()
+        const scale = box.width / (canvas.width / 3)
+        const labels = Array.from(document.querySelectorAll<HTMLElement>('.desk-label'))
+        const bounds = labels.map(label => label.getBoundingClientRect())
+        // Label anchors expose the office placement. Activity profiles themselves
+        // know only the avatar anchor and their fixed local drawing envelope.
+        return labels.flatMap(label => {
+          const x = box.x + parseFloat(label.style.left) / 100 * box.width
+          const y = box.y + parseFloat(label.style.top) / 100 * box.height + 78 * scale
+          const effect = { left: x + 20 * scale, right: x + 68 * scale, top: y - 34 * scale, bottom: y - 10 * scale }
+          return bounds.filter(b => effect.left < b.right && effect.right > b.left && effect.top < b.bottom + 2 && effect.bottom > b.top)
+            .map(() => label.dataset.agentId)
+        })
+      })
+      expect(overlaps).toEqual([])
+    }
+  })
+}
