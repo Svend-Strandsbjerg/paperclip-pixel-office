@@ -1,12 +1,12 @@
 import { expect, test, type Locator } from '@playwright/test'
 
 const roles = ['Orchestrator', 'Developer', 'Browser QA', 'Reviewer']
-test('production office renders four stable roles and demonstrates every state', async ({ page }) => {
+test('production office renders four stable roles and demonstrates every state', async ({ page, baseURL }) => {
   const errors: string[] = []
   const external: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })
-  page.on('request', request => { if (!request.url().startsWith('http://127.0.0.1:4288/')) external.push(request.url()) })
+  page.on('request', request => { if (!request.url().startsWith(`${baseURL}/`)) external.push(request.url()) })
   await page.goto('/')
   await expect(page.locator('.desk-label')).toHaveCount(4)
   await expect(page.locator('.roster li')).toHaveCount(4)
@@ -164,7 +164,7 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
 })
 
 // Reduced-motion assignments keep every ghost at rest and add a document beside
-// the orchestrator (scene 104, 148; canvas scale 3). Mask that document and
+// the orchestrator (scene 104, 148; native device pixel ratio). Mask that document and
 // only the two participants’ decorative effect regions; all avatar pixels and
 // nonparticipant effects must remain identical.
 async function reducedMotionFrame(canvas: Locator) {
@@ -173,10 +173,11 @@ async function reducedMotionFrame(canvas: Locator) {
     copy.width = node.width; copy.height = node.height
     const context = copy.getContext('2d')!
     context.drawImage(node, 0, 0)
-    const colorAt = (x: number, y: number) => Array.from(context.getImageData(x, y, 1, 1).data)
-    const documentColors = [colorAt(336, 390), colorAt(339, 393), colorAt(342, 402)]
-    context.clearRect(336, 390, 24, 30)
-    for (const x of [104, 280]) context.clearRect((x + 20) * 3, (148 - 34) * 3, 48 * 3, 24 * 3)
+    const scale = node.width / 640
+    const colorAt = (x: number, y: number) => Array.from(context.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data)
+    const documentColors = [colorAt(112, 130), colorAt(113, 131), colorAt(114, 134)]
+    context.clearRect(112 * scale, 130 * scale, 8 * scale, 10 * scale)
+    for (const x of [104, 312]) context.clearRect((x + 20) * scale, (148 - 34) * scale, 48 * scale, 24 * scale)
     return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentColors }
   })
 }
@@ -270,19 +271,22 @@ test('hidden polling drops handoffs; a long frame gap expires active and waiting
 })
 
 // Demo ghosts use the neutral #c6ced4 artwork. Read actual canvas pixels at
-// the orchestrator's workstation (scene 104, 148; canvas scale 3), not desk labels
+// the orchestrator's workstation (scene 104, 148; native device pixel ratio), not desk labels
 // that remain stationary during travel. Hover may move the body vertically by 6px.
 async function orchestratorBounds(canvas: Locator) {
   return canvas.evaluate((el: HTMLCanvasElement) => {
-    const { data } = el.getContext('2d')!.getImageData(264, 360, 96, 108)
+    const scale = el.width / 640
+    const left = Math.round(88 * scale), top = Math.round(120 * scale)
+    const width = Math.round(32 * scale), height = Math.round(36 * scale)
+    const { data } = el.getContext('2d')!.getImageData(left, top, width, height)
     const xs: number[] = [], ys: number[] = []
-    for (let y = 0; y < 108; y++) for (let x = 0; x < 96; x++) {
-      const i = (y * 96 + x) * 4
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
       if (data[i] === 198 && data[i + 1] === 206 && data[i + 2] === 212) {
-        xs.push(x + 264); ys.push(y + 360)
+        xs.push((x + left) / scale); ys.push((y + top) / scale)
       }
     }
-    return xs.length ? { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys), pixels: xs.length } : null
+    return xs.length ? { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys), pixels: xs.length / (scale * scale) } : null
   })
 }
 
@@ -291,19 +295,19 @@ async function expectOrchestratorAtDesk(canvas: Locator) {
   // Wait for settled horizontal bounds without waiting for hover to stop.
   await expect.poll(async () => {
     const bounds = await orchestratorBounds(canvas)
-    return bounds && { left: bounds.left, right: bounds.right }
-  }, { timeout: 3000 }).toEqual({ left: 285, right: 338 })
+    return !!bounds && Math.abs(bounds.left - 95) <= 2 && Math.abs(bounds.right - 112) <= 2
+  }, { timeout: 3000 }).toBe(true)
   // Sample several frames so a transient pass through the workstation is not
   // enough. The tight horizontal bounds also require the facing to settle.
   for (let frame = 0; frame < 3; frame++) {
     await expect(canvas).toHaveAttribute('data-handoff', 'rest')
     const bounds = await orchestratorBounds(canvas)
     expect(bounds).not.toBeNull()
-    expect(bounds!.pixels).toBeGreaterThan(2000)
-    expect(Math.abs(bounds!.left - 285)).toBeLessThanOrEqual(2)
-    expect(Math.abs(bounds!.right - 338)).toBeLessThanOrEqual(2)
-    expect(Math.abs(bounds!.top - 383)).toBeLessThanOrEqual(7)
-    expect(Math.abs(bounds!.bottom - 442)).toBeLessThanOrEqual(7)
+    expect(bounds!.pixels).toBeGreaterThan(180)
+    expect(Math.abs(bounds!.left - 95)).toBeLessThanOrEqual(2)
+    expect(Math.abs(bounds!.right - 112)).toBeLessThanOrEqual(2)
+    expect(Math.abs(bounds!.top - 128)).toBeLessThanOrEqual(7)
+    expect(Math.abs(bounds!.bottom - 147)).toBeLessThanOrEqual(7)
     await canvas.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
   }
 }
@@ -368,9 +372,9 @@ for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounde
   else await expectOrchestratorAtDesk(canvas)
 })
 
-for (const target of ['browser-qa', 'developer', 'reviewer'] as const) {
-  for (const reducedMotion of [false, true]) test(`320px long-title ${target} handoff keeps every desk readable, reduced motion ${reducedMotion}`, async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 740 })
+for (const width of [320, 390]) for (const target of ['browser-qa', 'developer', 'reviewer'] as const) {
+  for (const reducedMotion of [false, true]) test(`${width}px long-title ${target} handoff keeps every desk readable, reduced motion ${reducedMotion}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
     await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' })
     const task = { taskId: 'DEV-124', title: 'W'.repeat(80), target, ...(reducedMotion && target !== 'developer' ? { sha: '0123456789abcdef0123456789abcdef01234567' } : {}) }
     let delegated = false
@@ -386,7 +390,8 @@ for (const target of ['browser-qa', 'developer', 'reviewer'] as const) {
     await expect(bubble).toBeVisible({ timeout: 6000 })
     await expect(bubble).toContainText(task.title)
     const box = (await bubble.boundingBox())!
-    const scene = (await page.locator('.scene').boundingBox())!
+    const scene = (await page.locator('.scene-viewport').boundingBox())!
+    expect(await bubble.evaluate(el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight)).toBe(true)
     expect(box.x).toBeGreaterThanOrEqual(scene.x)
     expect(box.x + box.width).toBeLessThanOrEqual(scene.x + scene.width)
     for (const label of await page.locator('.desk-label').all()) {
@@ -396,8 +401,8 @@ for (const target of ['browser-qa', 'developer', 'reviewer'] as const) {
       expect(box.y + box.height + 3 <= desk.y || desk.y + desk.height <= box.y ||
         box.x + box.width <= desk.x || desk.x + desk.width <= box.x).toBe(true)
     }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320)
-    await page.screenshot({ path: `test-results/long-title-${target}-${reducedMotion}.png`, fullPage: true })
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+    await page.screenshot({ path: `test-results/long-title-${width}-${target}-${reducedMotion}.png`, fullPage: true })
     await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
     await expect(bubble).toBeHidden()
   })
@@ -432,7 +437,7 @@ for (const width of [390, 1440]) for (const reducedMotion of ['reduce', 'no-pref
       const overlaps = await page.evaluate(() => {
         const canvas = document.querySelector('canvas')!
         const box = canvas.getBoundingClientRect()
-        const scale = box.width / (canvas.width / 3)
+        const scale = box.width / 640
         const labels = Array.from(document.querySelectorAll<HTMLElement>('.desk-label'))
         const bounds = labels.map(label => label.getBoundingClientRect())
         // Label anchors expose the office placement. Activity profiles themselves

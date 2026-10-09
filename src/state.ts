@@ -1,11 +1,12 @@
+import { seatPosition } from './layout.ts'
 import type { Identity } from './identity.ts'
 /** Desk placement belongs to the office; identity is supplied separately by the server. */
-export const ROLES = Object.freeze([
-  Object.freeze({ id: 'orchestrator', name: 'Orchestrator', palette: 0, color: '#4488cc', col: 6, row: 6, desk: '01' }),
-  Object.freeze({ id: 'developer', name: 'Developer', palette: 1, color: '#cc4444', col: 17, row: 6, desk: '02' }),
-  Object.freeze({ id: 'browser-qa', name: 'Browser QA', palette: 2, color: '#44aa66', col: 6, row: 12, desk: '03' }),
-  Object.freeze({ id: 'reviewer', name: 'Reviewer', palette: 3, color: '#aa55cc', col: 17, row: 12, desk: '04' }),
-] as const)
+export const ROLES = Object.freeze(([
+  Object.freeze({ id: 'orchestrator', name: 'Orchestrator', palette: 0, color: '#4488cc', desk: '01' }),
+  Object.freeze({ id: 'developer', name: 'Developer', palette: 1, color: '#cc4444', desk: '02' }),
+  Object.freeze({ id: 'browser-qa', name: 'Browser QA', palette: 2, color: '#44aa66', desk: '03' }),
+  Object.freeze({ id: 'reviewer', name: 'Reviewer', palette: 3, color: '#aa55cc', desk: '04' }),
+] as const).map((role, index) => Object.freeze({ ...role, ...seatPosition(index) })))
 export type RoleId = typeof ROLES[number]['id']
 export type Activity = 'idle' | 'working'
 export type RosterAgent = Readonly<{ id: string; name: string; role: string; title?: string; status: string; activity: Activity; specialist?: RoleId; appearance?: Identity['appearance']; avatarUrl?: string }>
@@ -33,21 +34,24 @@ export function demoSnapshot(mode: DemoMode): Record<RoleId, Activity> {
   ])) as Record<RoleId, Activity>
 }
 
-/** Allocations survive polling, renames and removals. Sorted first arrivals make API
- * ordering irrelevant; reserved specialist desks preserve the workflow routes. */
+/** Sorted IDs allocate the lowest free seat. Session reservations keep returning agents stable across partial polls. */
 export function rosterLayout() {
   const slots = new Map<string, number>()
-  let next = 4
   return (agents: readonly RosterAgent[]): VisualState => {
+    const occupied = new Set(slots.values())
     for (const agent of [...agents].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
-      if (!agent.specialist && !slots.has(agent.id)) slots.set(agent.id, next++)
+      if (!slots.has(agent.id)) {
+        let slot = 0
+        while (occupied.has(slot)) slot++
+        slots.set(agent.id, slot); occupied.add(slot)
+      }
     }
     return Object.freeze(agents.map(agent => {
       const specialist = ROLES.find(r => r.id === agent.specialist)
-      const slot = specialist ? ROLES.indexOf(specialist) : slots.get(agent.id)!
+      const slot = slots.get(agent.id)!
       return Object.freeze({ id: agent.id, name: agent.name, specialist: agent.specialist,
         palette: specialist?.palette ?? 0, color: specialist?.color ?? '#c6ced4',
-        col: slot % 2 ? 17 : 6, row: 6 + Math.floor(slot / 2) * 6,
+        ...seatPosition(slot),
         desk: String(slot + 1).padStart(2, '0'), activity: agent.activity, status: agent.status,
         identity: { name: agent.name, role: agent.title || agent.role, appearance: agent.appearance, avatarUrl: agent.avatarUrl },
       })

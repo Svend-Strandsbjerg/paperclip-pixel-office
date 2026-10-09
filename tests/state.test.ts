@@ -1,18 +1,17 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { ROLES, demoSnapshot, mapVisualState } from '../src/state'
-import { sceneCharacters, tiles, WIDTH, HEIGHT } from '../src/scene'
+import { sceneCharacters, WIDTH, HEIGHT } from '../src/scene'
 import { getCharacterSprites } from '../src/vendor/pixel-agents/office/sprites/spriteData'
 import { getCharacterSprite } from '../src/vendor/pixel-agents/office/engine/characters'
 
 test('the exact four roles have unique permanent palettes and desks', () => {
   assert.deepEqual(ROLES.map(r => [r.name, r.palette, r.col, r.row, r.desk]), [
-    ['Orchestrator', 0, 6, 6, '01'], ['Developer', 1, 17, 6, '02'],
-    ['Browser QA', 2, 6, 12, '03'], ['Reviewer', 3, 17, 12, '04'],
+    ['Orchestrator', 0, 6, 6, '01'], ['Developer', 1, 19, 6, '02'],
+    ['Browser QA', 2, 6, 14, '03'], ['Reviewer', 3, 19, 14, '04'],
   ])
   assert.equal(new Set(ROLES.map(r => `${r.col},${r.row}`)).size, 4)
   for (const role of ROLES) {
-    assert.notEqual(tiles[role.row][role.col], 0)
     assert.ok(role.col * 16 < WIDTH && role.row * 16 < HEIGHT)
   }
 })

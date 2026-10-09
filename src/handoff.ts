@@ -80,13 +80,10 @@ export function completionTracker() {
   }
 }
 
-/** Fixed office aisles also serve future desks on expanded rows. */
+/** Layout's center lane connects modules, with room beside the recipient. */
 export function deliveryPose(seconds: number, source: { col: number; row: number }, target: { col: number; row: number }) {
-  // The left row-12 seat exits beside its desk before passing above the plant.
-  const aisle = (seat: { col: number; row: number }) => seat.col < 12 && seat.row === 12
-    ? [[144, 200], [144, 176], [216, 176]]
-    : [[216, seat.row * 16 + 8]]
-  const points = [[source.col * 16 + 8, source.row * 16 + 8], ...aisle(source), ...aisle(target).reverse(), [target.col * 16 + 8 + (target.col < 12 ? 24 : -24), target.row * 16 + 8]]
+  const aisle = (seat: { col: number; row: number }) => [208, seat.row * 16 + 8]
+  const points = [[source.col * 16 + 8, source.row * 16 + 8], aisle(source), aisle(target), [target.col * 16 + 8 + (target.col < 12 ? 48 : -48), target.row * 16 + 8]]
   const returning = seconds >= WALK_SECONDS + BUBBLE_SECONDS
   const phase = seconds < WALK_SECONDS ? 'outbound' : returning ? 'returning' : 'bubble'
   const progress = phase === 'bubble' ? 1 : Math.min(1, Math.max(0, (seconds - (returning ? WALK_SECONDS + BUBBLE_SECONDS : 0)) / WALK_SECONDS))

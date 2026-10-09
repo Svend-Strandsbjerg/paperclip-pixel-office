@@ -4,7 +4,8 @@ import { completionTracker, deliveryPose, SEEN_LIMIT, type Completion } from '..
 import { mapCompletions } from '../server/office-state'
 import { parseSnapshot } from '../src/provider'
 import { ROLES, mapVisualState, rosterLayout } from '../src/state'
-import { sceneFurniture, sceneSize } from '../src/scene'
+import { sceneSize } from '../src/scene'
+import { officeLayout } from '../src/layout'
 
 test('Developer, Browser QA, Reviewer and future agents return only authoritative completed child work', () => {
   for (const id of ['developer', 'browser-qa', 'reviewer', 'future-agent']) {
@@ -60,16 +61,16 @@ test('outbound and generic return couriers carry paper to delivery, face travel,
 
 test('delivery arrivals and both travel legs clear furniture for known pairs and expanded rows', () => {
   const state = [...mapVisualState({}), ...rosterLayout()(Array.from({ length: 12 }, (_, i) => ({ id: `future-${i}`, name: 'Future', role: 'agent', status: 'idle', activity: 'idle' as const })))]
-  const furniture = sceneFurniture(state)
+  const furniture = officeLayout(state).furniture
   for (const source of state) for (const target of state) {
     if (source.id === target.id) continue
     const arrival = deliveryPose(4, source, target)
-    assert.deepEqual([arrival.x, arrival.y], [target.col * 16 + 8 + (target.col < 12 ? 24 : -24), target.row * 16 + 8])
+    assert.deepEqual([arrival.x, arrival.y], [target.col * 16 + 8 + (target.col < 12 ? 48 : -48), target.row * 16 + 8])
     for (let step = 0; step <= 1100; step++) {
       const pose = deliveryPose(step / 100, source, target)
       const x = pose.x, y = pose.y + 44
-      assert.ok(x - 8 > 16 && x + 8 < 368 && y + 8 < sceneSize(state).height - 16)
-      for (const f of furniture) assert.ok(x + 8 <= f.x || x - 8 >= f.x + f.sprite[0].length || y - 3 >= f.y + f.sprite.length || y + 3 <= f.y,
+      assert.ok(x - 8 > 16 && x + 8 < sceneSize(state).width - 16 && y + 8 < sceneSize(state).height - 16)
+      for (const f of furniture) assert.ok(x + 8 <= f.x || x - 8 >= f.x + f.width || y - 3 >= f.y + f.height || y + 3 <= f.y,
         `${source.id} -> ${target.id} at ${step / 100}: (${x}, ${y}) overlaps (${f.x}, ${f.y})`)
     }
   }

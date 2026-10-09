@@ -18,7 +18,7 @@ test('dynamic polling preserves specialist handoffs and pipeline on a narrow red
   agents = [...agents, agent('generic')]
   await expect(page.locator('.roster li')).toHaveCount(5)
   await expect(page.locator('#activity-summary')).toHaveText('5 working · 0 idle')
-  expect(Number(await page.locator('canvas').getAttribute('height'))).toBeGreaterThan(Number(initialHeight))
+  expect(Number(await page.locator('canvas').getAttribute('height'))).toBe(Number(initialHeight))
   agents = agents.map(a => a.id === 'generic' ? { ...a, name: 'Renamed colleague', appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: 'orchid-peach' }, avatarUrl: '/api/agent-avatars/cap-v1/orchid-peach/rest.png?size=512&scale=1' } : a).reverse()
   await expect(page.locator('.roster [data-agent-id="generic"] h3')).toHaveText('Renamed colleague')
   await expect(page.locator('.roster [data-agent-id="generic"] img')).toHaveAttribute('src', '/api/office-avatar/cap-v1/orchid-peach.png')
@@ -28,6 +28,8 @@ test('dynamic polling preserves specialist handoffs and pipeline on a narrow red
   await expect(page.locator('.pipeline-panel')).toContainText('Ready for human merge')
   agents = [...agents, ...Array.from({ length: 35 }, (_, i) => agent(`generic-${i}`))]
   await expect(page.locator('.roster li')).toHaveCount(40)
+  expect(Number(await page.locator('canvas').getAttribute('height'))).toBeGreaterThan(Number(initialHeight))
+  expect(await page.locator('canvas').evaluate(c => c.getBoundingClientRect().width)).toBe(640)
   const scene = (await page.locator('.scene').boundingBox())!
   for (const label of await page.locator('.desk-label').all()) {
     const box = (await label.boundingBox())!

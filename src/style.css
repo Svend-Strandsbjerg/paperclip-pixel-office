@@ -66,19 +66,8 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 
 [hidden] { display: none !important; }
 
-.task-bubble { position: absolute; z-index: 3; left: 40%; top: var(--bubble-top, 5%); width: 55%; box-sizing: border-box; padding: 10px 12px; border: 2px solid #38554f; border-radius: 8px; background: #fffdf0; color: #243c36; font-size: clamp(11px, 1.5vw, 15px); line-height: 1.4; overflow-wrap: anywhere; box-shadow: 0 3px 0 #38554f33; pointer-events: none; }
-.task-bubble[hidden] { display: none; }
-@media (max-width: 600px) { .task-bubble { left: 3%; top: 1%; width: 94%; padding: 5px 8px; line-height: 1.2; } }
-
-.task-bubble[data-target="browser-qa"], .task-bubble[data-target="reviewer"] { left: 3%; top: var(--qa-bubble-top, 34%); width: 94%; }
-
-/* Wrapped handoff text gets its own row on small screens, clear of every desk. */
-@media (max-width: 600px) {
-  .scene { display: grid; }
-  .scene canvas, .scene .labels { grid-area: 2 / 1; }
-  .scene .labels { position: relative; }
-  .scene .task-bubble { position: relative; grid-area: 1 / 1; left: auto; top: auto; width: auto; margin: 8px; }
-}
+/* Handoff text owns a row outside the scrolling floor, clear of all labels. */
+.task-bubble { margin: 8px; padding: 8px; border: 2px solid #38554f; border-radius: 8px; background: #fffdf0; color: #243c36; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; box-shadow: 0 3px 0 #38554f33; pointer-events: none; }
 
 /* Warm wood, ink-blue architecture and Paperclip-colored portrait accents. */
 .office-panel { border-color: #637575; box-shadow: 0 14px 38px #081e2538; }
@@ -115,3 +104,11 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 .roster li { min-width: 0; }
 @media (max-width: 850px) { .roster { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .roster { grid-template-columns: minmax(0, 1fr); } }
+
+/* Keep one logical pixel per CSS pixel; scroll the floor, never shrink identities. */
+.scene-viewport { overflow: auto; max-height: 78vh; overscroll-behavior: contain; }
+.scene { margin-inline: auto; flex: none; }
+.scene canvas { image-rendering: auto; }
+.desk-label { width: 150px; max-width: 150px; justify-content: center; font-size: 10px; border-radius: 6px; }
+.avatar .portrait { image-rendering: auto; }
+.mode-buttons { flex-wrap: wrap; }

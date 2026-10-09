@@ -8,6 +8,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   let callback: FrameRequestCallback
   let now = 0
   let allocations = 0
+  let environmentPaints = 0
   const rotations: number[] = [], translations: number[][] = [], images: unknown[] = []
   const documents: number[][] = []
   const activityGraphics: number[][] = []
@@ -15,12 +16,13 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   const bubble = { hidden: true, textContent: '', dataset: {}, style: { setProperty() {} }, setAttribute() {}, remove() {} }
   const ctx = new Proxy({
     fillRect: (...args: number[]) => { if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args); if (['#eef0d9', '#98c4d0'].includes((ctx as unknown as CanvasRenderingContext2D).fillStyle as string)) activityGraphics.push(args) },
+    roundRect: () => { environmentPaints++ },
     rotate: (angle: number) => rotations.push(angle),
     translate: (...args: number[]) => translations.push(args),
     drawImage: (image: unknown) => { if (image instanceof Image) images.push(image) },
   }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} })
   const globals: Record<string, unknown> = {
-    window: { matchMedia: () => media },
+    window: { devicePixelRatio: 2, matchMedia: () => media, addEventListener() {}, removeEventListener() {} },
     document: { hidden: false, createElement: (tag: string) => tag === 'canvas' ? { getContext: () => ctx } : bubble, addEventListener() {}, removeEventListener() {} },
     requestAnimationFrame: (next: FrameRequestCallback) => { callback = next; return 1 },
     cancelAnimationFrame() {},
@@ -34,13 +36,18 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     t.after(() => previous ? Object.defineProperty(globalThis, key, previous) : Reflect.deleteProperty(globalThis, key))
   }
   t.mock.method(performance, 'now', () => now)
-  const canvas = { width: 0, height: 0, dataset: {} as Record<string, string>, parentElement: { append() {} }, getContext: () => ctx }
+  const canvas = { width: 0, height: 0, dataset: {} as Record<string, string>, parentElement: { parentElement: { before(node: unknown) { assert.equal(node, bubble) } }, style: {} }, getContext: () => ctx }
   const state = mapVisualState({ developer: 'working' })
   office = mountOffice(canvas as unknown as HTMLCanvasElement, state)
   function frame(time: number) {
     now = time; rotations.length = 0; translations.length = 0; images.length = 0; documents.length = 0; activityGraphics.length = 0
     callback!(time)
   }
+  assert.equal(canvas.width, 1280)
+  assert.equal(canvas.height, 896)
+  const painted = environmentPaints
+  office.setState(state)
+  assert.equal(environmentPaints, painted)
   frame(1)
   assert.equal(documents.length, 0)
   assert.ok(activityGraphics.length > 0)
@@ -51,6 +58,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   assert.notDeepEqual(translations[2], first[2]) // working
   assert.deepEqual(images, originalImages)
   assert.equal(allocations, 1) // cached shared demo image
+  assert.equal(environmentPaints, painted)
   office.handoff(demoHandoff)
   frame(33)
   for (let time = 49; time < 2000; time += 16) frame(time)

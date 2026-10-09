@@ -18,7 +18,7 @@ root.innerHTML = `
     <div class="workspace">
       <section class="office-panel" aria-label="Pixel office">
         <div class="panel-heading"><span><i class="status-dot"></i> THE STUDIO</span><span>FLOOR 01</span></div>
-        <div class="scene"><canvas aria-label="Pixel office waiting for the team" role="img"></canvas><div class="labels"></div></div>
+        <div class="scene-viewport" tabindex="0" aria-label="Office floor, scroll to explore"><div class="scene"><canvas aria-label="Pixel office waiting for the team" role="img"></canvas><div class="labels"></div></div></div>
         <div class="scene-footer"><span><i class="legend-dot working"></i> Working <i class="legend-dot idle"></i> Idle</span><span>Same faces. Same places.</span></div>
       </section>
       <aside class="team-panel" aria-labelledby="team-title"><div class="team-heading"><p class="eyebrow">IN THE OFFICE</p><h2 id="team-title">The team <span>0</span></h2></div><ul class="roster"></ul><div class="demo-note"><span class="note-icon" aria-hidden="true">◇</span><div><strong>A window into the work</strong><p>Connecting to office state. Paperclip stays in control; this office only visualizes activity.</p></div></div></aside>
