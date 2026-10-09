@@ -1,5 +1,6 @@
 import { paintGhost, paintStudio } from './art'
-import { handoffPose, handoffQueue, type Handoff } from './handoff'
+import { deliveryPose, handoffQueue, type Handoff } from './handoff'
+import { ambientMotion } from './ambient'
 import { ghostMotion } from './ghost-motion'
 import type { VisualState } from './state'
 import { sceneSize, sceneFurniture } from './scene'
@@ -12,10 +13,14 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   let elapsed = 0
   let frameDelta = 0
   const ghosts = ghostMotion()
+  const ambient = ambientMotion()
+  ambient.sync(state)
   ghosts.sync(state.map(agent => agent.id))
   let furniture = sceneFurniture(state)
   let active: { event: Handoff; seconds: number } | undefined
-  const hasParticipants = (event: Handoff) => [event.source, event.target].every(role => state.some(a => (a.specialist ?? a.id) === role))
+  const participant = (id: string) => state.find(a => a.id === id || a.specialist === id)
+  const hasParticipants = (event: Handoff) => !!participant(event.source) && !!participant(event.target)
+  const travelPose = (event: Handoff, seconds: number) => deliveryPose(seconds, participant(event.source)!, participant(event.target)!)
   const queue = handoffQueue()
   const bubble = document.createElement('div')
   bubble.className = 'task-bubble'
@@ -27,13 +32,13 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     if (document.hidden) queue.clear()
     const next = queue.advance(performance.now(), motion.matches)
     if (next && next.event !== active?.event) {
-      bubble.textContent = (next.event.context === 'rework' || next.event.target !== 'developer') ? `${next.event.context === 'rework' ? 'Rework' : next.event.target === 'reviewer' ? 'Review' : 'QA'} ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
+      bubble.textContent = next.event.kind === 'result' ? `Result ${next.event.taskId} · ${participant(next.event.source)?.name} → Orchestrator — ${next.event.title}` : (next.event.context === 'rework' || next.event.target !== 'developer') ? `${next.event.context === 'rework' ? 'Rework' : next.event.target === 'reviewer' ? 'Review' : 'QA'} ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
       bubble.dataset.target = next.event.target
       canvas.dataset.target = next.event.target
     }
     if (next && !hasParticipants(next.event)) { queue.clear(); active = undefined; bubble.hidden = true; return }
     active = next
-    const phase = active ? (motion.matches ? 'bubble' : handoffPose(active.seconds, active.event.target).phase) : 'rest'
+    const phase = active ? (motion.matches ? 'bubble' : travelPose(active.event, active.seconds).phase) : 'rest'
     if (canvas.dataset.handoff !== phase) canvas.dataset.handoff = phase
     const hidden = phase !== 'bubble'
     if (bubble.hidden !== hidden) bubble.hidden = hidden
@@ -54,13 +59,27 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     render: ctx => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       paintStudio(ctx, state)
-      const travel = active && !motion.matches ? handoffPose(active.seconds, active.event.target) : undefined
+      const travel = active && !motion.matches ? travelPose(active.event, active.seconds) : undefined
+      const courier = active ? participant(active.event.source)?.id : undefined
       renderScene(ctx, furniture, [], 0, 0, 3, null, null)
       for (const agent of state) {
-        const visitor = (agent.specialist ?? agent.id) === 'orchestrator' ? travel : undefined
+        const visitor = courier === agent.id ? travel : undefined
+        const offset = ambient.sample(agent.id, elapsed, frameDelta, agent.activity === 'idle', motion.matches, !!active)
         const moving = visitor && visitor.phase !== 'bubble'
-        const pose = ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : 0, moving ? visitor.dy : 0)
-        paintGhost(ctx, agent, visitor?.x ?? agent.col * 16 + 8, (visitor?.y ?? agent.row * 16 + 8) + 44, pose)
+        const pose = ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : offset.dx, moving ? visitor.dy : offset.dy)
+        const x = visitor?.x ?? agent.col * 16 + 8 + offset.x
+        const y = (visitor?.y ?? agent.row * 16 + 8 + offset.y) + 44
+        paintGhost(ctx, agent, x, y, pose)
+        if (courier === agent.id && (motion.matches || travel?.carrying)) {
+          // Pixel document is attached to the courier, never ambient movement.
+          ctx.fillStyle = '#596575'
+          ctx.fillRect((x + 8) * 3, (y - 18 + pose.lift) * 3, 24, 30)
+          ctx.fillStyle = '#fff4d6'
+          ctx.fillRect((x + 9) * 3, (y - 17 + pose.lift) * 3, 18, 24)
+          ctx.fillStyle = '#8794a0'
+          ctx.fillRect((x + 10) * 3, (y - 14 + pose.lift) * 3, 12, 3)
+          ctx.fillRect((x + 10) * 3, (y - 11 + pose.lift) * 3, 9, 3)
+        }
       }
       for (const agent of state) {
         const x = (agent.col * 16 + 8) * 3
@@ -71,5 +90,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       }
     },
   })
-  return { setState: (next: VisualState) => { state = next; ghosts.sync(state.map(agent => agent.id)); furniture = sceneFurniture(state); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
+  return { setState: (next: VisualState) => { state = next; ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); furniture = sceneFurniture(state); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }
