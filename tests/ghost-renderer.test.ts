@@ -36,7 +36,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     t.after(() => previous ? Object.defineProperty(globalThis, key, previous) : Reflect.deleteProperty(globalThis, key))
   }
   t.mock.method(performance, 'now', () => now)
-  const canvas = { width: 0, height: 0, dataset: {} as Record<string, string>, parentElement: { append() {}, style: {} }, getContext: () => ctx }
+  const canvas = { width: 0, height: 0, dataset: {} as Record<string, string>, parentElement: { parentElement: { before(node: unknown) { assert.equal(node, bubble) } }, style: {} }, getContext: () => ctx }
   const state = mapVisualState({ developer: 'working' })
   office = mountOffice(canvas as unknown as HTMLCanvasElement, state)
   function frame(time: number) {

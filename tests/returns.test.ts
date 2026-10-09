@@ -69,7 +69,7 @@ test('delivery arrivals and both travel legs clear furniture for known pairs and
     for (let step = 0; step <= 1100; step++) {
       const pose = deliveryPose(step / 100, source, target)
       const x = pose.x, y = pose.y + 44
-      assert.ok(x - 8 > 16 && x + 8 < 368 && y + 8 < sceneSize(state).height - 16)
+      assert.ok(x - 8 > 16 && x + 8 < sceneSize(state).width - 16 && y + 8 < sceneSize(state).height - 16)
       for (const f of furniture) assert.ok(x + 8 <= f.x || x - 8 >= f.x + f.width || y - 3 >= f.y + f.height || y + 3 <= f.y,
         `${source.id} -> ${target.id} at ${step / 100}: (${x}, ${y}) overlaps (${f.x}, ${f.y})`)
     }

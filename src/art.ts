@@ -1,7 +1,7 @@
 import { FRONT, type GhostPose } from './ghost-motion'
 import { PALETTES, appearanceKey } from './identity'
 import type { VisualAgent, VisualState } from './state'
-import { officeLayout } from './layout'
+import { deskBounds, workspacePad, officeLayout } from './layout'
 /** The same native image is used on the canvas and in the roster. */
 export function avatarPath(agent: VisualAgent) {
   const a = agent.identity?.appearance
@@ -84,12 +84,12 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
   box(0, 0, layout.width, layout.height, '#233942', 0)
   for (const m of layout.modules) {
     const y = m.y
-    box(16, y, 608, 416, '#dbccb5', 12)
-    for (let line = y + 24; line < y + 416; line += 24) box(20, line, 600, .5, '#c6b497', 0)
+    box(m.x, y, m.width, m.height, '#dbccb5', 12)
+    for (let line = y + 24; line < y + m.height; line += 24) box(m.x + 4, line, m.width - 8, .5, '#c6b497', 0)
     box(28, y + 8, 388, 22, '#b7d4d5', 4)
     for (const x of [32, 160, 288, 412]) box(x, y + 8, 3, 22, '#eef3eb', 0)
     // Glass divider leaves the entire workspace circulation lane clear.
-    box(432, y + 40, 3, 344, '#8caaa688', 1)
+    box(m.workspaceRight, y + 40, 3, m.height - 72, '#8caaa688', 1)
     box(450, y + 44, 154, 160, '#c0ccc1', 12)
     box(468, y + 54, 116, 38, '#f5f5e9', 4)
     box(480, y + 66, 55, 3, '#90a99c', 1)
@@ -102,13 +102,14 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     box(486, y + 300, 62, 30, '#efdcc0', 15)
     plant(589, y + 345)
     plant(590, y + 30)
-    ctx.fillStyle = '#455e61'; ctx.font = '9px system-ui'; ctx.fillText(`STUDIO ${String(m.index + 1).padStart(2, '0')}`, 32, y + 403)
+    ctx.fillStyle = '#455e61'; ctx.font = '9px system-ui'; ctx.fillText(`STUDIO ${String(m.index + 1).padStart(2, '0')}`, m.x + 16, y + m.height - 13)
   }
   for (const a of state) {
     const x = a.col * 16 + 8, y = a.row * 16 + 8
-    box(x - 80, y - 14, 160, 94, '#b6b8a788', 16)
-    box(x - 38, y - 20, 76, 26, '#8e664d', 6)
-    box(x - 38, y - 23, 76, 26, '#c99f73', 6)
+    const pad = workspacePad(a), desk = deskBounds(a)
+    box(pad.x, pad.y, pad.width, pad.height, '#b6b8a788', 16)
+    box(desk.x, desk.y + 3, desk.width, desk.height - 3, '#8e664d', 6)
+    box(desk.x, desk.y, desk.width, desk.height - 3, '#c99f73', 6)
     box(x - 18, y - 19, 36, 17, '#344c56', 3)
     box(x - 15, y - 16, 30, 11, '#a8c9ca', 2)
     box(x + 25, y - 18, 6, 9, '#fff2d5', 2)

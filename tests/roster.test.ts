@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mapRoster, readConfig } from '../server/office-state'
 import { parseSnapshot } from '../src/provider'
 import { ROLES, rosterLayout } from '../src/state'
-import { sceneSize, sceneFurniture, sceneCharacters } from '../src/scene'
+import { officeLayout } from '../src/layout'
+import { sceneSize, sceneCharacters } from '../src/scene'
 import { avatarPath, portraitKey } from '../src/art'
 const ids = Object.fromEntries(ROLES.map(r => [r.id, `uuid-${r.id}`]))
 const original = ROLES.map(r => ({ id: ids[r.id], name: r.name, role: 'general', status: 'idle' }))
@@ -27,7 +28,8 @@ test('authoritative roster grows in modules and ignores ordering', () => {
   const size = sceneSize(state)
   assert.ok(size.height > sceneSize(first).height)
   assert.equal(size.width, 640)
-  assert.equal(sceneFurniture(state).length - sceneFurniture(first).length, 0)
+  assert.ok(officeLayout(first).furniture.length > 0)
+  assert.equal(officeLayout(state).furniture.length - officeLayout(first).furniture.length, 36)
   for (const a of state) {
     assert.ok(a.row * 16 + 60 < size.height)
     for (const b of state) if (a.id !== b.id) assert.ok(Math.abs(a.col - b.col) * 16 >= 88 || Math.abs(a.row - b.row) * 16 >= 96)

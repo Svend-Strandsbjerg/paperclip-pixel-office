@@ -1,12 +1,12 @@
 import { seatPosition } from './layout.ts'
 import type { Identity } from './identity.ts'
 /** Desk placement belongs to the office; identity is supplied separately by the server. */
-export const ROLES = Object.freeze([
-  Object.freeze({ id: 'orchestrator', name: 'Orchestrator', palette: 0, color: '#4488cc', col: 6, row: 6, desk: '01' }),
-  Object.freeze({ id: 'developer', name: 'Developer', palette: 1, color: '#cc4444', col: 19, row: 6, desk: '02' }),
-  Object.freeze({ id: 'browser-qa', name: 'Browser QA', palette: 2, color: '#44aa66', col: 6, row: 14, desk: '03' }),
-  Object.freeze({ id: 'reviewer', name: 'Reviewer', palette: 3, color: '#aa55cc', col: 19, row: 14, desk: '04' }),
-] as const)
+export const ROLES = Object.freeze(([
+  Object.freeze({ id: 'orchestrator', name: 'Orchestrator', palette: 0, color: '#4488cc', desk: '01' }),
+  Object.freeze({ id: 'developer', name: 'Developer', palette: 1, color: '#cc4444', desk: '02' }),
+  Object.freeze({ id: 'browser-qa', name: 'Browser QA', palette: 2, color: '#44aa66', desk: '03' }),
+  Object.freeze({ id: 'reviewer', name: 'Reviewer', palette: 3, color: '#aa55cc', desk: '04' }),
+] as const).map((role, index) => Object.freeze({ ...role, ...seatPosition(index) })))
 export type RoleId = typeof ROLES[number]['id']
 export type Activity = 'idle' | 'working'
 export type RosterAgent = Readonly<{ id: string; name: string; role: string; title?: string; status: string; activity: Activity; specialist?: RoleId; appearance?: Identity['appearance']; avatarUrl?: string }>
@@ -21,7 +21,7 @@ export function mapVisualState(snapshot: unknown, identities?: Partial<Record<Ro
   const values = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
     ? snapshot as Record<string, unknown> : {}
   return Object.freeze(ROLES.map(role => Object.freeze({
-    ...role, ...seatPosition(ROLES.indexOf(role)),
+    ...role,
     ...(identities?.[role.id] ? { identity: identities[role.id] } : {}),
     activity: Object.hasOwn(values, role.id) && values[role.id] === 'working' ? 'working' : 'idle',
   })))
@@ -34,12 +34,10 @@ export function demoSnapshot(mode: DemoMode): Record<RoleId, Activity> {
   ])) as Record<RoleId, Activity>
 }
 
-/** Sorted IDs allocate the lowest free seat. Retained agents never move on polling. */
+/** Sorted IDs allocate the lowest free seat. Session reservations keep returning agents stable across partial polls. */
 export function rosterLayout() {
   const slots = new Map<string, number>()
   return (agents: readonly RosterAgent[]): VisualState => {
-    const present = new Set(agents.map(a => a.id))
-    for (const id of slots.keys()) if (!present.has(id)) slots.delete(id)
     const occupied = new Set(slots.values())
     for (const agent of [...agents].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
       if (!slots.has(agent.id)) {

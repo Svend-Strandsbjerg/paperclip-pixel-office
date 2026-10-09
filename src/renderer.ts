@@ -31,7 +31,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   bubble.className = 'task-bubble'
   bubble.setAttribute('role', 'status')
   bubble.hidden = true
-  canvas.parentElement!.append(bubble)
+  canvas.parentElement!.parentElement!.before(bubble)
   canvas.dataset.handoff = 'rest'
   function updateHandoff() {
     if (document.hidden) queue.clear()
@@ -65,8 +65,6 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       staticContext.scale(pixelRatio / 3, pixelRatio / 3)
       paintStudio(staticContext, state)
     }
-    bubble.style.setProperty('--bubble-top', `${14 / size.height * 100}%`)
-    bubble.style.setProperty('--qa-bubble-top', `${92 / size.height * 100}%`)
   }
   resize()
   window.addEventListener('resize', resize)

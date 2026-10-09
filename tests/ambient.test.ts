@@ -1,11 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { officeLayout } from '../src/layout'
 import { ambientMotion } from '../src/ambient'
 import { mapVisualState, rosterLayout } from '../src/state'
-import { sceneFurniture, sceneSize } from '../src/scene'
+import { sceneSize } from '../src/scene'
 
 test('ambient paths are deterministic, staggered, bounded, and clear of solid furniture and walls', () => {
   const state = [...mapVisualState({}), ...rosterLayout()(Array.from({ length: 12 }, (_, i) => ({ id: `future-${i}`, name: 'Future', role: 'agent', status: 'idle', activity: 'idle' as const })))]
+  const furniture = officeLayout(state).furniture
+  assert.ok(furniture.length > 0)
   const a = ambientMotion(), b = ambientMotion()
   a.sync(state); b.sync(state)
   const movingAt = new Set<string>()
@@ -18,8 +21,8 @@ test('ambient paths are deterministic, staggered, bounded, and clear of solid fu
       if (pose.y > 1) moving.push(agent.id)
       // Ground footprint stays below furniture; ghost artwork floats above it.
       const x = agent.col * 16 + 8 + pose.x, y = agent.row * 16 + 52 + pose.y
-      assert.ok(x - 8 > 16 && x + 8 < 368 && y + 8 < sceneSize(state).height - 16)
-      for (const f of sceneFurniture(state)) assert.ok(x + 8 <= f.x || x - 8 >= f.x + f.sprite[0].length || y - 3 >= f.y + f.sprite.length || y + 3 <= f.y)
+      assert.ok(x - 8 > 16 && x + 8 < sceneSize(state).width - 16 && y + 8 < sceneSize(state).height - 16)
+      for (const f of furniture) assert.ok(x + 8 <= f.x || x - 8 >= f.x + f.width || y - 3 >= f.y + f.height || y + 3 <= f.y)
     }
     movingAt.add(moving.join(','))
   }

@@ -1,15 +1,12 @@
 import { type VisualState } from './state'
 import { createCharacter } from './vendor/pixel-agents/office/engine/characters'
 import { CharacterState, Direction } from './vendor/pixel-agents/office/types'
-import type { FurnitureInstance } from './vendor/pixel-agents/office/types'
 export { MODULE_WIDTH as WIDTH, MODULE_HEIGHT as HEIGHT } from './layout'
 import { officeLayout } from './layout'
 export function sceneSize(state: VisualState) {
   const { width, height } = officeLayout(state)
   return { width, height }
 }
-/** Modern environment is painted once into the renderer's static surface. */
-export function sceneFurniture(_state: VisualState): FurnitureInstance[] { return [] }
 
 /** Pure adapter into the reused renderer's character format. No random allocation. */
 export function sceneCharacters(state: VisualState, elapsed: number, reducedMotion = false) {
