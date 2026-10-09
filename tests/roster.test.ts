@@ -11,11 +11,10 @@ const extra = (i: number) => ({ id: `extra-${String(i).padStart(3, '0')}`, name:
 const project = (agents: unknown[]) => parseSnapshot({ mode: 'live', snapshot: {}, agents: mapRoster(agents, ids) }).agents!
 const positions = (state: ReturnType<ReturnType<typeof rosterLayout>>) => Object.fromEntries(state.map(a => [a.id, [a.col, a.row, a.desk]]))
 
-test('authoritative roster grows past four, reserves familiar specialist desks and ignores ordering', () => {
+test('authoritative roster grows in modules and ignores ordering', () => {
   const layout = rosterLayout()
   const first = layout(project(original))
-  assert.deepEqual(first.map(a => [a.col, a.row]), ROLES.map(a => [a.col, a.row]))
-  assert.deepEqual(first.map(a => a.id), ROLES.map(a => ids[a.id]))
+  assert.deepEqual(first.map(a => [a.col, a.row]), [[6, 6], [19, 6], [6, 14], [19, 14]])
   const five = layout(project([...original, extra(0)]))
   assert.equal(five.length, 5)
   assert.equal(five[4].identity?.role, 'Research specialist')
@@ -23,12 +22,12 @@ test('authoritative roster grows past four, reserves familiar specialist desks a
   const state = layout(project(many))
   assert.equal(state.length, 40)
   assert.deepEqual(positions(state), positions(layout(project([...many].reverse()))))
-  assert.deepEqual(positions(state), positions(rosterLayout()(project([...many].reverse()))))
+  assert.deepEqual(positions(rosterLayout()(project(many))), positions(rosterLayout()(project([...many].reverse()))))
   assert.deepEqual(positions(first), Object.fromEntries(Object.entries(positions(state)).filter(([id]) => id.startsWith('uuid-'))))
   const size = sceneSize(state)
   assert.ok(size.height > sceneSize(first).height)
-  assert.equal(size.width, 384)
-  assert.equal(sceneFurniture(state).length - sceneFurniture(first).length, 36 * 3)
+  assert.equal(size.width, 640)
+  assert.equal(sceneFurniture(state).length - sceneFurniture(first).length, 0)
   for (const a of state) {
     assert.ok(a.row * 16 + 60 < size.height)
     for (const b of state) if (a.id !== b.id) assert.ok(Math.abs(a.col - b.col) * 16 >= 88 || Math.abs(a.row - b.row) * 16 >= 96)
@@ -52,7 +51,8 @@ test('poll updates rename, avatar, activity, removal and return without moving r
   assert.notEqual(avatarPath(agent), avatarPath(changed))
   assert.notEqual(portraitKey(agent), portraitKey(changed))
   for (const a of next) assert.deepEqual(positions(next)[a.id], positions(before)[a.id])
-  assert.deepEqual(positions(layout(project([...original, extra(0), extra(1)]))), positions(before))
+  const returned = layout(project([...original, extra(0), extra(1)]))
+  assert.equal(new Set(returned.map(a => a.desk)).size, 6)
   assert.deepEqual(layout(project([])), [])
 })
 

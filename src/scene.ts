@@ -1,33 +1,15 @@
 import { type VisualState } from './state'
 import { createCharacter } from './vendor/pixel-agents/office/engine/characters'
-import { CharacterState, Direction, TileType, TILE_SIZE } from './vendor/pixel-agents/office/types'
-import type { FurnitureInstance, SpriteData } from './vendor/pixel-agents/office/types'
-import { DESK_SQUARE_SPRITE, CHAIR_SPRITE, PC_SPRITE, PLANT_SPRITE, BOOKSHELF_SPRITE,
-  COOLER_SPRITE, WHITEBOARD_SPRITE } from './vendor/pixel-agents/office/sprites/spriteData'
-
-export const WIDTH = 384
-export const HEIGHT = 272
-export const tiles = Array.from({ length: HEIGHT / TILE_SIZE }, (_, row) =>
-  Array.from({ length: WIDTH / TILE_SIZE }, (_, col) =>
-    row < 2 || row === 16 || col === 0 || col === 23 ? TileType.WALL : TileType.FLOOR_1))
-
-function item(sprite: SpriteData, x: number, y: number, zY = y + sprite.length): FurnitureInstance {
-  return { sprite, x, y, zY }
-}
+import { CharacterState, Direction } from './vendor/pixel-agents/office/types'
+import type { FurnitureInstance } from './vendor/pixel-agents/office/types'
+export { MODULE_WIDTH as WIDTH, MODULE_HEIGHT as HEIGHT } from './layout'
+import { officeLayout } from './layout'
 export function sceneSize(state: VisualState) {
-  return { width: WIDTH, height: Math.max(HEIGHT, ...state.map(a => a.row * TILE_SIZE + 80)) }
+  const { width, height } = officeLayout(state)
+  return { width, height }
 }
-export function sceneFurniture(state: VisualState): FurnitureInstance[] { return [
-  item(BOOKSHELF_SPRITE, 24, 24), item(BOOKSHELF_SPRITE, 328, 24),
-  item(WHITEBOARD_SPRITE, 176, 15), item(COOLER_SPRITE, 344, 218),
-  ...[[24, 77], [344, 77], [24, 219], [184, 230]].map(([x, y]) => item(PLANT_SPRITE, x, y)),
-  ...state.flatMap(role => {
-    const x = role.col * TILE_SIZE + 8
-    const y = role.row * TILE_SIZE + 8
-    return [item(CHAIR_SPRITE, x - 8, y - 12, y - 1),
-      item(DESK_SQUARE_SPRITE, x - 16, y + 3), item(PC_SPRITE, x - 8, y + 5, y + 36)]
-  }),
-] }
+/** Modern environment is painted once into the renderer's static surface. */
+export function sceneFurniture(_state: VisualState): FurnitureInstance[] { return [] }
 
 /** Pure adapter into the reused renderer's character format. No random allocation. */
 export function sceneCharacters(state: VisualState, elapsed: number, reducedMotion = false) {

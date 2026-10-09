@@ -164,7 +164,7 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
 })
 
 // Reduced-motion assignments keep every ghost at rest and add a document beside
-// the orchestrator (scene 104, 148; canvas scale 3). Mask that document and
+// the orchestrator (scene 104, 148; native device pixel ratio). Mask that document and
 // only the two participants’ decorative effect regions; all avatar pixels and
 // nonparticipant effects must remain identical.
 async function reducedMotionFrame(canvas: Locator) {
@@ -173,10 +173,11 @@ async function reducedMotionFrame(canvas: Locator) {
     copy.width = node.width; copy.height = node.height
     const context = copy.getContext('2d')!
     context.drawImage(node, 0, 0)
-    const colorAt = (x: number, y: number) => Array.from(context.getImageData(x, y, 1, 1).data)
-    const documentColors = [colorAt(336, 390), colorAt(339, 393), colorAt(342, 402)]
-    context.clearRect(336, 390, 24, 30)
-    for (const x of [104, 280]) context.clearRect((x + 20) * 3, (148 - 34) * 3, 48 * 3, 24 * 3)
+    const scale = node.width / 640
+    const colorAt = (x: number, y: number) => Array.from(context.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data)
+    const documentColors = [colorAt(112, 130), colorAt(113, 131), colorAt(114, 134)]
+    context.clearRect(112 * scale, 130 * scale, 8 * scale, 10 * scale)
+    for (const x of [104, 312]) context.clearRect((x + 20) * scale, (148 - 34) * scale, 48 * scale, 24 * scale)
     return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentColors }
   })
 }

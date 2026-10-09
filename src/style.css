@@ -115,3 +115,17 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 .roster li { min-width: 0; }
 @media (max-width: 850px) { .roster { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .roster { grid-template-columns: minmax(0, 1fr); } }
+
+/* Keep one logical pixel per CSS pixel; scroll the floor, never shrink identities. */
+.scene-viewport { overflow: auto; max-height: 78vh; overscroll-behavior: contain; }
+.scene { margin-inline: auto; flex: none; }
+.scene canvas { image-rendering: auto; }
+.desk-label { width: 150px; max-width: 150px; justify-content: center; font-size: 10px; border-radius: 6px; }
+.avatar .portrait { image-rendering: auto; }
+.mode-buttons { flex-wrap: wrap; }
+.task-bubble, .task-bubble[data-target="browser-qa"], .task-bubble[data-target="reviewer"] { left: 12px; top: 2px; width: 410px; font-size: 11px; padding: 5px 8px; }
+@media (max-width: 600px) {
+  .scene { display: block; }
+  .scene .labels { position: absolute; }
+  .scene .task-bubble { position: absolute; left: 12px; top: 2px; width: 410px; margin: 0; }
+}

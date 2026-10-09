@@ -1,7 +1,7 @@
 import { FRONT, type GhostPose } from './ghost-motion'
 import { PALETTES, appearanceKey } from './identity'
 import type { VisualAgent, VisualState } from './state'
-import { sceneSize } from './scene'
+import { officeLayout } from './layout'
 /** The same native image is used on the canvas and in the roster. */
 export function avatarPath(agent: VisualAgent) {
   const a = agent.identity?.appearance
@@ -68,50 +68,50 @@ export function paintPortrait(image: HTMLImageElement, agent: VisualAgent) {
   image.src = avatarPath(agent) ?? fallbackGhost
 }
 
-/** Original integer-grid artwork, behind the existing depth-sorted furniture.
- * Coordinates preserve the central and cross-office handoff aisles. */
+/** Smooth, reusable architecture; native ghost images are painted separately. */
 export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
+  const layout = officeLayout(state)
   ctx.save(); ctx.scale(3, 3)
-  const rect = (x: number, y: number, w: number, h: number, color: string) => {
-    ctx.fillStyle = color; ctx.fillRect(x, y, w, h)
+  const box = (x: number, y: number, w: number, h: number, color: string, radius = 6) => {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); ctx.fill()
   }
-  const { height } = sceneSize(state)
-  rect(0, 0, 384, height, '#233942')
-  rect(16, 32, 352, height - 48, '#b2a48c')
-  for (let y = 32; y < height - 16; y += 16) {
-    rect(16, y, 352, 1, '#8e8878')
-    for (let x = 16 + (y % 32 ? 24 : 0); x < 368; x += 48) {
-      rect(x, y + 1, 1, 15, '#9b947f')
-      rect(x + 5, y + 5, Math.min(18, 364 - x), 1, '#bfb198')
+  const plant = (x: number, y: number) => {
+    box(x - 9, y, 18, 16, '#d2b492', 4)
+    for (const [dx, dy] of [[-7, -6], [6, -10], [0, -18]]) {
+      ctx.fillStyle = dx ? '#668b73' : '#86a583'; ctx.beginPath(); ctx.ellipse(x + dx, y + dy, 8, 13, dx / 12, 0, Math.PI * 2); ctx.fill()
     }
   }
-  rect(16, 30, 352, 4, '#142d35'); rect(16, 34, 352, 2, '#d6c6a3')
-  rect(16, height - 20, 352, 4, '#857b67')
-  for (const x of [70, 248]) {
-    rect(x - 3, 4, 58, 27, '#142d35'); rect(x, 6, 52, 22, '#79a9bb')
-    rect(x, 6, 52, 9, '#9dc5ce'); rect(x + 3, 17, 9, 11, '#5f879b')
-    rect(x + 15, 13, 7, 15, '#628f9f'); rect(x + 37, 19, 12, 9, '#628f9f')
-    rect(x + 25, 6, 2, 22, '#e0ceaa'); rect(x, 16, 52, 2, '#e0ceaa')
-    rect(x - 3, 28, 58, 3, '#ead7b1')
+  box(0, 0, layout.width, layout.height, '#233942', 0)
+  for (const m of layout.modules) {
+    const y = m.y
+    box(16, y, 608, 416, '#dbccb5', 12)
+    for (let line = y + 24; line < y + 416; line += 24) box(20, line, 600, .5, '#c6b497', 0)
+    box(28, y + 8, 388, 22, '#b7d4d5', 4)
+    for (const x of [32, 160, 288, 412]) box(x, y + 8, 3, 22, '#eef3eb', 0)
+    // Glass divider leaves the entire workspace circulation lane clear.
+    box(432, y + 40, 3, 344, '#8caaa688', 1)
+    box(450, y + 44, 154, 160, '#c0ccc1', 12)
+    box(468, y + 54, 116, 38, '#f5f5e9', 4)
+    box(480, y + 66, 55, 3, '#90a99c', 1)
+    box(480, y + 75, 85, 3, '#c2cec0', 1)
+    box(484, y + 118, 84, 44, '#a77750', 18)
+    for (const x of [470, 574]) box(x, y + 125, 12, 26, '#607c80', 5)
+    box(450, y + 232, 154, 148, '#c5bba7', 18)
+    box(466, y + 248, 100, 32, '#7f9891', 10)
+    box(466, y + 248, 100, 9, '#68847d', 5)
+    box(486, y + 300, 62, 30, '#efdcc0', 15)
+    plant(589, y + 345)
+    plant(590, y + 30)
+    ctx.fillStyle = '#455e61'; ctx.font = '9px system-ui'; ctx.fillText(`STUDIO ${String(m.index + 1).padStart(2, '0')}`, 32, y + 403)
   }
-  for (const agent of state) {
-    const x = agent.col * 16 + 8, y = agent.row * 16 + 8
-    const accent = agentAccent(agent)
-    rect(x - 43, y - 18, 88, 55, '#8b826e')
-    rect(x - 44, y - 20, 88, 54, '#45606a')
-    rect(x - 41, y - 17, 82, 48, '#354e58')
-    rect(x - 41, y + 28, 82, 2, accent)
-    for (let t = -36; t <= 36; t += 8) rect(x + t, y + 25, 3, 1, '#55737a')
-    // Desk shadow and a personal lamp, journal and mug beside each workstation.
-    rect(x - 19, y + 12, 40, 24, '#263d43')
-    rect(x + 25, y + 1, 10, 3, '#263d43'); rect(x + 29, y - 11, 2, 13, '#d0b57e')
-    rect(x + 24, y - 15, 12, 5, '#f0d49c'); rect(x + 27, y - 10, 6, 2, '#fff0bf')
-    rect(x - 33, y + 4, 9, 12, accent); rect(x - 31, y + 6, 1, 8, '#f0dfb9')
-    rect(x + 24, y + 11, 5, 6, '#e4d7bd'); rect(x + 29, y + 12, 2, 3, '#e4d7bd')
+  for (const a of state) {
+    const x = a.col * 16 + 8, y = a.row * 16 + 8
+    box(x - 80, y - 14, 160, 94, '#b6b8a788', 16)
+    box(x - 38, y - 20, 76, 26, '#8e664d', 6)
+    box(x - 38, y - 23, 76, 26, '#c99f73', 6)
+    box(x - 18, y - 19, 36, 17, '#344c56', 3)
+    box(x - 15, y - 16, 30, 11, '#a8c9ca', 2)
+    box(x + 25, y - 18, 6, 9, '#fff2d5', 2)
   }
-  // Shared aisle runner and entrance threshold.
-  rect(177, 76, 30, 143, '#9a947f')
-  for (let y = 80; y < 216; y += 8) rect(181, y, 22, 1, '#b9ae94')
-  rect(162, height - 19, 60, 3, '#ddc59a'); rect(162, height - 16, 60, 7, '#152e37')
   ctx.restore()
 }
