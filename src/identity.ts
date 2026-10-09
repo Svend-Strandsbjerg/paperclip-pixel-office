@@ -13,7 +13,7 @@ export const PALETTES = {
 } as const
 export type PaletteId = keyof typeof PALETTES
 export type Appearance = Readonly<{ schemaVersion: 1; characterVersion: 'cap-v1'; paletteId: PaletteId }>
-export type Identity = Readonly<{ name: string; role: string; appearance?: Appearance }>
+export type Identity = Readonly<{ name: string; role: string; avatarUrl?: string; appearance?: Appearance }>
 export function appearancePalette(value: unknown): PaletteId | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return
@@ -36,4 +36,11 @@ export function appearanceKey(identity?: Identity): string | undefined {
 }
 export function appearanceLabel(identity?: Identity): string {
   return identity?.appearance ? `Paperclip · ${identity.appearance.paletteId}` : 'Local fallback · appearance unavailable'
+}
+
+/** Only native public avatar paths are accepted, never arbitrary remote images. */
+export function normalizeAvatarUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return
+  const match = /^\/api\/agent-avatars\/(cap-v1)\/([a-z-]+)\/rest\.png(?:\?size=\d+&scale=\d+)?$/.exec(value)
+  return match && Object.hasOwn(PALETTES, match[2]) ? value : undefined
 }

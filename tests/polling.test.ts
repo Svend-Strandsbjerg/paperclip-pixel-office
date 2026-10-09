@@ -76,7 +76,7 @@ test('task hydration, delegation, malformed responses and issue recovery preserv
   const replies = [
     { ...live, tasks: [task(1)] },
     { ...live, tasks: [task(1), { ...task(2), source: 'reviewer', secret: 'private' }] },
-    { ...live, snapshot: {} },
+    { ...live, snapshot: { malformed: 'running' } },
     { ...live, tasks: [task(1), task(2), task(3)] },
     { ...live, tasks: null },
     { ...live, tasks: [task(1), task(2), task(3), task(4)] },

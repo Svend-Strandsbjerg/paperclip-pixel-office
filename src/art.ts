@@ -1,15 +1,17 @@
 import { PALETTES, appearanceKey } from './identity'
 import type { VisualAgent, VisualState } from './state'
+import { sceneSize } from './scene'
 /** The same native image is used on the canvas and in the roster. */
 export function avatarPath(agent: VisualAgent) {
   const a = agent.identity?.appearance
-  return a ? `/api/office-avatar/${a.characterVersion}/${a.paletteId}.png` : undefined
+  const native = agent.identity?.avatarUrl?.match(/^\/api\/agent-avatars\/(cap-v1)\/([a-z-]+)\/rest\.png/)
+  return native ? `/api/office-avatar/${native[1]}/${native[2]}.png` : a ? `/api/office-avatar/${a.characterVersion}/${a.paletteId}.png` : undefined
 }
 export function agentAccent(agent: VisualAgent) {
   return agent.identity?.appearance ? PALETTES[agent.identity.appearance.paletteId][0] : agent.color
 }
 export function portraitKey(agent: VisualAgent) {
-  return appearanceKey(agent.identity) ?? `local:${agent.id}`
+  return `${appearanceKey(agent.identity) ?? `local:${agent.id}`}:${agent.identity?.avatarUrl ?? ''}`
 }
 // Neutral ghost for demo, missing metadata, loading and failed assets; never a fabricated identity.
 export const fallbackGhost = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="#c6ced4" d="M14 51V29a18 18 0 0 1 36 0v22l-9-5-9 5-9-5z"/><path fill="#283c43" d="M24 27h5v7h-5zm12 0h5v7h-5z"/></svg>')
@@ -63,9 +65,10 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
   const rect = (x: number, y: number, w: number, h: number, color: string) => {
     ctx.fillStyle = color; ctx.fillRect(x, y, w, h)
   }
-  rect(0, 0, 384, 272, '#233942')
-  rect(16, 32, 352, 224, '#b2a48c')
-  for (let y = 32; y < 256; y += 16) {
+  const { height } = sceneSize(state)
+  rect(0, 0, 384, height, '#233942')
+  rect(16, 32, 352, height - 48, '#b2a48c')
+  for (let y = 32; y < height - 16; y += 16) {
     rect(16, y, 352, 1, '#8e8878')
     for (let x = 16 + (y % 32 ? 24 : 0); x < 368; x += 48) {
       rect(x, y + 1, 1, 15, '#9b947f')
@@ -73,7 +76,7 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     }
   }
   rect(16, 30, 352, 4, '#142d35'); rect(16, 34, 352, 2, '#d6c6a3')
-  rect(16, 252, 352, 4, '#857b67')
+  rect(16, height - 20, 352, 4, '#857b67')
   for (const x of [70, 248]) {
     rect(x - 3, 4, 58, 27, '#142d35'); rect(x, 6, 52, 22, '#79a9bb')
     rect(x, 6, 52, 9, '#9dc5ce'); rect(x + 3, 17, 9, 11, '#5f879b')
@@ -99,6 +102,6 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
   // Shared aisle runner and entrance threshold.
   rect(177, 76, 30, 143, '#9a947f')
   for (let y = 80; y < 216; y += 8) rect(181, y, 22, 1, '#b9ae94')
-  rect(162, 253, 60, 3, '#ddc59a'); rect(162, 256, 60, 7, '#152e37')
+  rect(162, height - 19, 60, 3, '#ddc59a'); rect(162, height - 16, 60, 7, '#152e37')
   ctx.restore()
 }

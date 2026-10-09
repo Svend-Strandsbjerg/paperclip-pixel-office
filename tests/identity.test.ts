@@ -7,21 +7,21 @@ import { ROLES, demoSnapshot, mapVisualState } from '../src/state.ts'
 import { avatarPath, portraitKey } from '../src/art.ts'
 import { sceneCharacters } from '../src/scene.ts'
 
-const ids = Object.fromEntries(ROLES.map(r => [r.id, `private-${r.id}`])) as Record<typeof ROLES[number]['id'], string>
+const ids = Object.fromEntries(ROLES.map(r => [r.id, r.id])) as Record<typeof ROLES[number]['id'], string>
 const agents = ROLES.map((r, i) => ({ id: ids[r.id], name: `Colleague ${i}`, role: 'engineer', status: 'running',
   appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: Object.keys(PALETTES)[i] },
-  avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1',
+  avatarUrl: `/api/agent-avatars/cap-v1/${Object.keys(PALETTES)[i]}/rest.png?size=512&scale=1`,
   adapterConfig: { env: { secret: 'do-not-send' } },
 }))
 
-test('identity projection consumes authoritative appearance and excludes configuration, IDs and URLs', () => {
+test('identity projection consumes authoritative appearance and excludes private configuration', () => {
   const identities = mapIdentities(agents, ids)
   const result = parseSnapshot({ mode: 'live', snapshot: demoSnapshot('working'), identities })
   assert.equal(result.identities!.developer!.name, 'Colleague 1')
   assert.equal(result.identities!.developer!.appearance!.paletteId, 'pink-lemonade')
-  assert.doesNotMatch(JSON.stringify(result), /private-|do-not-send|avatarUrl|adapterConfig/)
+  assert.doesNotMatch(JSON.stringify(result), /do-not-send|adapterConfig/)
   assert.deepEqual(mapIdentities([...agents].reverse(), ids), identities)
-  assert.throws(() => mapIdentities(agents.slice(1), ids))
+  assert.equal(Object.keys(mapIdentities(agents.slice(1), ids)).length, 3)
   assert.throws(() => mapIdentities([...agents, agents[0]], ids))
 })
 
@@ -66,7 +66,7 @@ test('strict tuple validation fails closed and discloses local fallback', () => 
 
 test('same appearance has identical native asset across roles and names; a poll changes it naturally', () => {
   const project = (paletteId: string) => parseSnapshot({ mode: 'live', snapshot: demoSnapshot('working'),
-    identities: mapIdentities(agents.map(a => ({ ...a, appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId } })), ids) })
+    identities: mapIdentities(agents.map(a => ({ ...a, avatarUrl: undefined, appearance: { schemaVersion: 1, characterVersion: 'cap-v1', paletteId } })), ids) })
   const first = project('orchid-peach')
   const state = mapVisualState(first.snapshot, first.identities)
   assert.equal(new Set(state.map(avatarPath)).size, 1)

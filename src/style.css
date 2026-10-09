@@ -66,11 +66,11 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 
 [hidden] { display: none !important; }
 
-.task-bubble { position: absolute; z-index: 3; left: 40%; top: 5%; width: 55%; box-sizing: border-box; padding: 10px 12px; border: 2px solid #38554f; border-radius: 8px; background: #fffdf0; color: #243c36; font-size: clamp(11px, 1.5vw, 15px); line-height: 1.4; overflow-wrap: anywhere; box-shadow: 0 3px 0 #38554f33; pointer-events: none; }
+.task-bubble { position: absolute; z-index: 3; left: 40%; top: var(--bubble-top, 5%); width: 55%; box-sizing: border-box; padding: 10px 12px; border: 2px solid #38554f; border-radius: 8px; background: #fffdf0; color: #243c36; font-size: clamp(11px, 1.5vw, 15px); line-height: 1.4; overflow-wrap: anywhere; box-shadow: 0 3px 0 #38554f33; pointer-events: none; }
 .task-bubble[hidden] { display: none; }
 @media (max-width: 600px) { .task-bubble { left: 3%; top: 1%; width: 94%; padding: 5px 8px; line-height: 1.2; } }
 
-.task-bubble[data-target="browser-qa"], .task-bubble[data-target="reviewer"] { left: 3%; top: 34%; width: 94%; }
+.task-bubble[data-target="browser-qa"], .task-bubble[data-target="reviewer"] { left: 3%; top: var(--qa-bubble-top, 34%); width: 94%; }
 
 /* Wrapped handoff text gets its own row on small screens, clear of every desk. */
 @media (max-width: 600px) {
@@ -106,3 +106,12 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 .delivery-sha { font: 11px monospace; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .pipeline-panel { padding: 16px; } .pipeline-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 380px) { .pipeline-rail { grid-template-columns: minmax(0, 1fr); } }
+
+/* Keep growing rosters readable without widening narrow viewports. */
+.desk-label { max-width: 38%; }
+.desk-label strong { overflow: hidden; text-overflow: ellipsis; }
+.role-info h3, .appearance-label { overflow-wrap: anywhere; }
+.roster { max-height: 720px; overflow-y: auto; }
+.roster li { min-width: 0; }
+@media (max-width: 850px) { .roster { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .roster { grid-template-columns: minmax(0, 1fr); } }

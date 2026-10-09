@@ -1,6 +1,6 @@
 # Paperclip Pixel Office
 
-A small, read-only browser office for **Orchestrator, Developer, Browser QA and Reviewer**. Each has a permanent desk, palette and visible name. Local demos show mixed activity, all working and all idle. Working characters use typing animation; idle characters remain still. A server-only bridge connects to live Paperclip activity using stable agent IDs.
+A read-only browser office for the current Paperclip company roster. Every agent gets a desk, authoritative name, status and native ghost appearance. The four configured workflow specialists retain their familiar positions; other agents appear automatically through normal polling.
 
 ## Run locally
 
@@ -34,23 +34,23 @@ Playwright starts and stops its own production Node server on `127.0.0.1:4288`. 
 ## Architecture
 
 ```text
-Paperclip GET agents → server stable-ID/status mapping → GET /api/office-state
+Paperclip GET agents → server authoritative roster projection → GET /api/office-state
   → browser serial polling (or explicit deterministic demo fixtures)
-  → mapVisualState() — known role IDs, safe activity normalization
-  → VisualState — exactly four fixed desks + projected identity + idle/working
-  → sceneCharacters() — fixed palettes, seats and animation frames
+  → rosterLayout() — stable agent IDs, reserved specialist desks
+  → VisualState — dynamic desks + projected identity + idle/working
+  → sceneCharacters() — allocated seats and animation frames
   → mountOffice() — adapted Pixel Agents Canvas renderer
 ```
 
-- `src/state.ts`: the fixed role registry, provider fixtures and pure mapping boundary. Input shape is `{ [roleId]: 'idle' | 'working' }`. Missing/invalid values default to idle; unknown roles and inherited properties are ignored. Input cannot override names, palettes or coordinates.
-- `src/scene.ts`: tile layout, permanent furniture and the pure adapter to upstream character types.
+- `src/state.ts`: specialist workflow roles, local demo fixtures, and the dynamic roster allocator. Initial generic agents are sorted by stable ID and assigned unique desks after the four reserved specialist desks. Later arrivals append; rename, removal, activity changes and API reordering never move existing agents within the page lifetime. Removed agents disappear; their slots remain reserved for their return. Reload deterministically allocates the current roster.
+- `src/scene.ts`: expanding room dimensions, roster-driven furniture and the pure adapter to upstream character types.
 - `src/renderer.ts`: renders supplied visual state; no fetch, socket, provider import or Paperclip API dependency. Its returned `setState()` accepts a replacement visual snapshot; `destroy()` cancels the animation loop.
-- `server/office-state.ts`: server-only configuration, read-only upstream request, strict ID mapping and sanitized responses. `server/index.ts` mounts it in production; `vite.config.ts` mounts it for development and optional local preview.
+- `server/office-state.ts`: server-only configuration, read-only upstream request, validated roster projection and sanitized responses. `server/index.ts` mounts it in production; `vite.config.ts` mounts it for development and optional local preview.
 - `src/provider.ts`: validates browser responses and polls every 1.5 seconds after completion, with an eleven-second timeout and no overlapping requests.
 - `src/main.ts`: connection indication, live updates, local demo controls and accessible DOM roster/desk labels. These use the same mapped state as the Canvas. No persisted state is required to keep identity deterministic.
 - `src/vendor/pixel-agents`: a bounded reuse of existing Canvas rendering, sprite definitions/cache, depth ordering and frame selection. See [foundation selection](docs/foundation.md) and [third-party inventory](THIRD_PARTY.md).
 
-The renderer remains unaware of credentials, APIs and transport. Additional roles, task assignment and general workflow simulation remain out of scope. This app never assigns tasks, writes issues, creates agents or merges PRs.
+The renderer remains unaware of credentials, APIs and transport. Task assignment and general workflow simulation remain out of scope. This app never assigns tasks, writes issues, creates agents or merges PRs.
 
 ## Verification coverage
 
@@ -68,13 +68,13 @@ Copy `.env.example` to `.env` and fill in server-only values, or supply environm
 - `OFFICE_MODE=demo`: no Paperclip request or credentials required; the server returns the fixed mixed fixture. The browser visibly says LOCAL DEMO, stops polling and enables local scene controls.
 - `PAPERCLIP_API_URL`: trusted upstream base URL, without query, fragment or embedded credentials.
 - `PAPERCLIP_COMPANY_ID` and `PAPERCLIP_API_KEY`: company and runtime-provided API credentials, used only by the server.
-- `PAPERCLIP_AGENT_ROLES`: JSON object mapping each office role (`orchestrator`, `developer`, `browser-qa`, `reviewer`) to a different stable Paperclip agent UUID. Obtain IDs from your company's agent records; display-name changes require no update. When an agent is replaced, update its UUID and restart the server. All four are required.
+- `PAPERCLIP_AGENT_ROLES`: JSON object mapping each office role (`orchestrator`, `developer`, `browser-qa`, `reviewer`) to a different stable Paperclip agent UUID. Obtain IDs from your company's agent records; display-name changes require no update. When an agent is replaced, update its UUID and restart the server. This mapping is optional for roster display. All four are needed for specialist handoffs and the delivery pipeline; missing configuration leaves those workflow views unavailable without hiding the roster.
 
 Run `npm run dev`, or `npm run build` followed by `npm run start`. Both load `.env` server-side (production uses Node’s `--env-file-if-exists`; existing environment variables take precedence). The npm startup commands enable Node's environment proxy support and honor existing `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`; no proxy bypass is added. Restart after changing configuration.
 
-Upstream reads are `GET /api/companies/{companyId}/agents` (2.5-second timeout) and `GET /api/companies/{companyId}/issues?limit=1000` (4-second timeout), with redirects rejected. Only the four configured IDs are consumed; unknown agents are ignored. `running` becomes `working`; every other nonempty status becomes `idle`. Missing or duplicate configured agents, malformed responses, transport failures and upstream errors return HTTP 503 with a fixed generic message, never upstream details. The browser receives `{mode, snapshot: {role: "idle" | "working"}, identities: {role: {name, role, paletteId?}}, tasks, deliveries}`, never UUIDs, credentials or raw upstream data. Names and roles are bounded plain text; appearance is an allowlisted persisted palette. Responses are not cached; non-GET bridge methods return 405.
+Upstream reads are `GET /api/companies/{companyId}/agents` (2.5-second timeout) and `GET /api/companies/{companyId}/issues?limit=1000` (4-second timeout), with redirects rejected. Every returned agent is consumed independently of the specialist mapping. `running` becomes `working`; other statuses remain visible but render idle. Removed agents disappear on the next successful poll, while paused/terminated agents remain visible if Paperclip still returns them. Duplicate IDs, malformed responses, transport failures and upstream errors return HTTP 503 with a fixed generic message. The browser receives a bounded identity projection (`agents` with ID, name, role/title, status/activity, optional specialist, validated appearance and native avatar URL), ID-keyed activity/identity maps, tasks and deliveries. Credentials and private agent configuration stay server-side. Native public avatar URLs are allowlisted and served through the existing read-only avatar bridge. Responses are not cached; non-GET bridge methods return 405.
 
-Live mode visibly says LIVE · CONNECTED and hides demo controls. Polling updates both Canvas and labels through `mapVisualState()` and `renderer.setState()` without reload. Failures show DISCONNECTED outside the renderer and retain the last valid state, explicitly labeled as last received activity. Before the first valid response, characters are neutral idle and the summary says activity unavailable. Polling continues and automatically restores the connected indication on recovery.
+Live mode visibly says LIVE · CONNECTED and hides demo controls. Polling updates both Canvas and labels through `rosterLayout()` and `renderer.setState()` without reload. Failures show DISCONNECTED outside the renderer and retain the last valid state, explicitly labeled as last received activity. Before the first valid response, the roster is empty and the summary says activity unavailable. Polling continues and automatically restores the connected indication on recovery.
 
 ## Orchestrator → Developer, Browser QA and Reviewer handoffs
 
@@ -129,7 +129,7 @@ For operation, use `sudo systemctl stop pixel-office` for a clean SIGTERM shutdo
 
 ### Paperclip visual identity
 
-The existing four-agent mapping now also reads names, roles and persisted `cap-v1` appearance palettes. Characters, roster portraits and desk accents share each agent's stable palette; desk positions and handoff behavior stay fixed. Demo identities are deterministic and offline. Unsupported/missing appearance uses the local role palette, identified in the roster tooltip. The office interprets Paperclip palettes using its existing animated sprites; it does not display exact avatar PNGs. See [identity and art direction](docs/identity-art-direction.md) for the API projection, references, asset decisions and verification limits.
+The authoritative roster reads names, roles/titles and persisted `cap-v1` appearance palettes plus native avatar URLs. Canvas ghosts and roster portraits use the native asset. Missing or unsupported appearance uses an explicitly labeled neutral fallback. Specialist workflow identities are separate from displayed names and IDs.
 
 ### Browser QA return to Developer
 
@@ -162,3 +162,11 @@ A sibling QA with missing, invalid or non-string creation time prevents rework q
 ## Delivery pipeline overview
 
 The office includes a read-only delivery rail with exact-SHA gates, rework and human-merge readiness. See [selection, structured evidence requirements and failure behavior](docs/delivery-pipeline.md). Legacy tasks without structured gate results remain explicitly unknown. Optional `OFFICE_GITHUB_TOKEN` stays server-side.
+
+## Dynamic roster QA
+
+`tests/roster.test.ts` covers the original specialists, a fifth generic agent, 40 agents, order independence, non-overlap, room expansion, rename/avatar updates, paused and removed agents. `tests/browser/roster.spec.ts` is the targeted polling/narrow/reduced-motion regression and also checks specialist handoff and pipeline preservation. Existing handoff, pipeline, provider, polling and production tests remain applicable.
+
+Run `NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npx playwright test tests/browser/roster.spec.ts --reporter=line` in environments with a localhost HTTP proxy. It intercepts only this browser's office-state response to expose an additional agent, then a 40-agent roster, without touching Paperclip or production mappings. The fixture is in the spec; no login is needed. For live QA use an authorized test company whose Paperclip roster already contains an extra agent: do not add it to `PAPERCLIP_AGENT_ROLES`. It appears on the next successful poll. Pixel Office provides no mutation controls or agent-creation endpoint.
+
+The room keeps its original width and adds rows vertically, preserving legible desk size on narrow screens. Long desk labels truncate with full text in their title and roster card; roster text wraps, and large rosters scroll. Browser QA should inspect desktop and 390px layouts, large-roster scrolling, native asset loading, and all specialist routes with motion enabled and reduced motion.

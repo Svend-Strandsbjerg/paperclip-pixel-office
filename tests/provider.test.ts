@@ -1,5 +1,5 @@
 import { demoDeliveries } from '../src/pipeline'
-import { mapIdentities, demoIdentities } from '../server/office-state.ts'
+import { mapIdentities, demoIdentities, mapRoster } from '../server/office-state.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
@@ -10,14 +10,14 @@ import { demoSnapshot } from '../src/state'
 const ids = { orchestrator: 'a', developer: 'b', 'browser-qa': 'c', reviewer: 'd' }
 const agents = Object.values(ids).map((id, i) => ({ id, status: i === 1 ? 'running' : 'idle', name: 'untrusted', secret: 'private' }))
 const env = { PAPERCLIP_API_URL: 'http://paperclip.test', PAPERCLIP_COMPANY_ID: 'company', PAPERCLIP_API_KEY: 'secret', PAPERCLIP_AGENT_ROLES: JSON.stringify(ids) }
-test('stable IDs map running only, ignore names and unknown agents', () => {
-  assert.deepEqual(mapAgents([...agents, { id: 'unknown', status: 'running' }], ids), { orchestrator: 'idle', developer: 'working', 'browser-qa': 'idle', reviewer: 'idle' })
-  for (const status of ['idle', 'active', 'paused', 'error', 'terminated', 'pending_approval']) assert.equal(mapAgents(agents.map(a => ({ ...a, status })), ids).developer, 'idle')
-  for (const input of [{}, [], [...agents, agents[0]], agents.map(a => ({ ...a, status: null }))]) assert.throws(() => mapAgents(input, ids))
+test('stable IDs include every agent and map running only', () => {
+  assert.deepEqual(mapAgents([...agents, { id: 'unknown', status: 'running' }], ids), { a: 'idle', b: 'working', c: 'idle', d: 'idle', unknown: 'working' })
+  for (const status of ['idle', 'active', 'paused', 'error', 'terminated', 'pending_approval']) assert.equal(mapAgents(agents.map(a => ({ ...a, status })), ids).b, 'idle')
+  for (const input of [{}, [...agents, agents[0]], agents.map(a => ({ ...a, status: null }))]) assert.throws(() => mapAgents(input, ids))
 })
-test('configuration requires explicit unique IDs and never defaults to demo', () => {
+test('workflow mapping is optional, unique when supplied, and never defaults to demo', () => {
   assert.throws(() => readConfig({}))
-  assert.throws(() => readConfig({ ...env, PAPERCLIP_AGENT_ROLES: '{}' }))
+  assert.equal(readConfig({ ...env, PAPERCLIP_AGENT_ROLES: '{}' }).mode, 'live')
   assert.throws(() => readConfig({ ...env, PAPERCLIP_AGENT_ROLES: JSON.stringify({ ...ids, developer: 'a' }) }))
   assert.deepEqual(readConfig({ OFFICE_MODE: 'demo' }), { mode: 'demo' })
 })
@@ -40,7 +40,7 @@ test('HTTP bridge uses GET with server credentials and returns only minimal stat
   }, async url => {
     const response = await fetch(url)
     assert.equal(response.headers.get('cache-control'), 'no-store')
-    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), tasks: [], deliveries: [] })
+    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: [], deliveries: [] })
     assert.equal((await fetch(url, { method: 'POST' })).status, 405)
     assert.equal(calls, 2)
   })
@@ -62,7 +62,7 @@ test('demo is deterministic, explicitly labeled, and makes no upstream request',
 })
 test('browser validates complete snapshots before updating the renderer', () => {
   assert.deepEqual(parseSnapshot({ mode: 'live', snapshot: demoSnapshot('idle') }).snapshot, demoSnapshot('idle'))
-  for (const input of [null, {}, { mode: 'live', snapshot: {} }, { mode: 'live', snapshot: { ...demoSnapshot('idle'), developer: 'running' } }]) assert.throws(() => parseSnapshot(input))
+  for (const input of [null, {}, { mode: 'live', snapshot: { ...demoSnapshot('idle'), developer: 'running' } }]) assert.throws(() => parseSnapshot(input))
 })
 test('bounded issue read includes parent and child beyond a default page', async () => {
   const issues = Array.from({ length: 200 }, (_, i) => ({ id: `other-${i}`, title: 'Other issue' }))
@@ -96,7 +96,7 @@ test('issue failures log safe server diagnostics while preserving live agent sta
     }, async url => {
       const response = await fetch(url)
       assert.equal(response.status, 200)
-      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), tasks: null, deliveries: null })
+      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: null, deliveries: null })
     })
     const message = warn.mock.calls.at(-1)!.arguments.join(' ')
     assert.ok(message.includes(diagnostic))
@@ -116,7 +116,7 @@ test('issue read tolerates latency beyond the former 1.5-second budget', async (
   }, async url => {
     const data = await (await fetch(url)).json()
     assert.deepEqual(data.tasks, [])
-    assert.equal(data.snapshot.developer, 'working')
+    assert.equal(data.snapshot.b, 'working')
   })
 })
 
@@ -126,7 +126,7 @@ test('snapshot boundary rejects inherited and non-plain shapes and strips unknow
     { ...valid, snapshot: Object.assign([], valid.snapshot) },
     { ...valid, snapshot: Object.create(valid.snapshot) },
     { ...valid, snapshot: Object.assign(new Date(), valid.snapshot) }]) assert.throws(() => parseSnapshot(input))
-  assert.deepEqual(parseSnapshot({ ...valid, secret: 'private', snapshot: { ...valid.snapshot, unknown: 'working' } }), valid)
+  assert.deepEqual(parseSnapshot({ ...valid, secret: 'private', snapshot: { ...valid.snapshot, unknown: 'working' } }), { ...valid, snapshot: { ...valid.snapshot, unknown: 'working' } })
 })
 
 test('snapshot boundary preserves tasks while excluding identity and activity overrides', () => {
@@ -173,4 +173,25 @@ test('live pipeline bridge keeps agents on GitHub outage and exposes only struct
     assert.equal((await(await fetch(url)).json()).deliveries[0].merge,'ready')
     assert.equal(githubCalls,3)
   },()=>now)
+})
+
+test('live HTTP polling discovers and removes generic agents without a workflow mapping', async t => {
+  t.mock.method(console, 'warn', () => {})
+  let roster = [...agents]
+  await withBridge({ ...env, PAPERCLIP_AGENT_ROLES: '{}' }, async (url, options) => {
+    assert.equal(options?.method, 'GET')
+    return Response.json(String(url).includes('/agents') ? roster : [])
+  }, async url => {
+    const read = async () => parseSnapshot(await (await fetch(url)).json())
+    assert.equal((await read()).agents!.length, 4)
+    roster = [...roster, { id: 'new-researcher', name: 'Researcher', status: 'running', secret: 'private' }]
+    const added = await read()
+    assert.equal(added.agents!.length, 5)
+    assert.equal(added.agents!.find(a => a.id === 'new-researcher')!.activity, 'working')
+    assert.equal(added.tasks, null)
+    assert.equal(added.deliveries, null)
+    assert.ok(!JSON.stringify(added).includes('private'))
+    roster = []
+    assert.deepEqual((await read()).agents, [])
+  })
 })
