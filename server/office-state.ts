@@ -5,7 +5,7 @@ import { normalizeAppearance, normalizeAvatarUrl, identityText, type Identity } 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ROLES, demoSnapshot, type Activity, type RoleId, type RosterAgent } from '../src/state.ts'
 
-import type { Task } from '../src/handoff.ts'
+import type { Completion, Task } from '../src/handoff.ts'
 
 /** Only explicit exact-SHA labels in the authoritative QA/review assignment are used.
  * Conflicting labels, abbreviated hashes and incidental commit mentions stay absent. */
@@ -61,6 +61,18 @@ export function mapTasks(input: unknown, ids: Record<RoleId, string>): Task[] {
       }
     })
     .sort((a, b) => a.taskId.localeCompare(b.taskId, undefined, { numeric: true }))
+}
+
+/** Explicit child lifecycle only; roster membership permits future specialist roles. */
+export function mapCompletions(input: unknown, orchestrator: string | undefined, roster: readonly RosterAgent[]): Completion[] {
+  if (!Array.isArray(input)) throw new Error('Invalid issues')
+  if (!orchestrator) return []
+  const parents = new Set(input.filter(i => i && typeof i.id === 'string' && i.assigneeAgentId === orchestrator).map(i => i.id))
+  const agents = new Set(roster.map(a => a.id))
+  return input.filter(i => i && typeof i.parentId === 'string' && parents.has(i.parentId) && agents.has(i.assigneeAgentId) && i.assigneeAgentId !== orchestrator &&
+    typeof i.identifier === 'string' && /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(i.identifier) && i.identifier.length <= 32 && typeof i.title === 'string' &&
+    ['todo', 'backlog', 'in_progress', 'in_review', 'blocked', 'done'].includes(i.status))
+    .map(i => ({ taskId: i.identifier, title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task', agentId: i.assigneeAgentId, status: i.status === 'done' ? 'done' : 'open' }))
 }
 
 // Paperclip supports at most 1000 issues per list read. A full page may be truncated.
@@ -126,6 +138,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
       let roster: RosterAgent[] | undefined
       let identities: unknown = demoIdentities
       let tasks: Task[] | null = null
+      let completions: Completion[] | null = null
       let deliveries: Delivery[] | null = config.mode === 'demo' ? demoDeliveries : null
       if (config.mode === 'live') {
         const upstream = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/agents`, {
@@ -154,6 +167,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
             issueFailure = `issue limit ${ISSUE_LIMIT} reached; snapshot may be incomplete`
             throw new Error('Incomplete issues')
           }
+          completions = mapCompletions(input, config.ids?.orchestrator, roster!)
           if (!ROLES.every(r => config.ids?.[r.id])) throw new Error('Workflow mapping unavailable')
           tasks = mapTasks(input, config.ids!)
           try {
@@ -171,7 +185,7 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
           console.warn(`[office-state] Issue read failed: ${issueFailure}; task handoffs unavailable, agent activity retained`)
         }
       }
-      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, ...(roster ? { agents: roster } : {}), tasks, deliveries }))
+      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, ...(roster ? { agents: roster } : {}), tasks, completions, deliveries }))
     } catch {
       res.statusCode = 503
       res.end(JSON.stringify({ error: 'Office state unavailable' }))

@@ -40,7 +40,7 @@ test('HTTP bridge uses GET with server credentials and returns only minimal stat
   }, async url => {
     const response = await fetch(url)
     assert.equal(response.headers.get('cache-control'), 'no-store')
-    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: [], deliveries: [] })
+    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: [], completions: [], deliveries: [] })
     assert.equal((await fetch(url, { method: 'POST' })).status, 405)
     assert.equal(calls, 2)
   })
@@ -57,7 +57,7 @@ test('configuration, transport, upstream HTTP and schema failures are sanitized'
 })
 test('demo is deterministic, explicitly labeled, and makes no upstream request', async () => {
   await withBridge({ OFFICE_MODE: 'demo' }, async () => { throw new Error('must not fetch') }, async url => {
-    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed'), identities: demoIdentities, tasks: null, deliveries: demoDeliveries })
+    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed'), identities: demoIdentities, tasks: null, completions: null, deliveries: demoDeliveries })
   })
 })
 test('browser validates complete snapshots before updating the renderer', () => {
@@ -96,7 +96,7 @@ test('issue failures log safe server diagnostics while preserving live agent sta
     }, async url => {
       const response = await fetch(url)
       assert.equal(response.status, 200)
-      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: null, deliveries: null })
+      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: null, completions: null, deliveries: null })
     })
     const message = warn.mock.calls.at(-1)!.arguments.join(' ')
     assert.ok(message.includes(diagnostic))

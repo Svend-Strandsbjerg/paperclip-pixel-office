@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { pollOffice, type OfficeSnapshot } from '../src/provider'
+import { handoffQueue, type Handoff } from "../src/handoff"
 import { demoSnapshot } from '../src/state'
 
 const flush = () => new Promise<void>(resolve => setImmediate(resolve))
@@ -131,4 +132,48 @@ test('pipeline-only polling updates do not replay handoffs and outages clear fre
   broken=true;t.mock.timers.tick(1500);await flush();assert.equal(failures,1)
   broken=false;deliveries=null;t.mock.timers.tick(1500);await flush()
   assert.equal(states.at(-1)!.deliveries,null);assert.equal(events,0)
+})
+
+test('polling emits lifecycle returns but never uses idle snapshots or failure recovery as completion', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const task = { taskId: 'DEV-400', title: 'Result', agentId: 'developer', status: 'open' }
+  let completions = [task]
+  let fail = false
+  t.mock.method(globalThis, 'fetch', async () => fail ? Response.json({}, { status: 503 }) : Response.json({ ...live, snapshot: demoSnapshot('idle'), completions }))
+  const events: unknown[] = []
+  const stop = pollOffice(() => {}, () => {}, event => events.push(event))
+  t.after(stop)
+  await flush()
+  t.mock.timers.tick(1500); await flush()
+  assert.equal(events.length, 0)
+  completions = [{ ...task, status: 'done' }]
+  t.mock.timers.tick(1500); await flush()
+  assert.deepEqual(events, [{ taskId: task.taskId, title: task.title, source: 'developer', target: 'orchestrator', kind: 'result' }])
+  completions = [{ ...task, taskId: 'DEV-401' }]
+  t.mock.timers.tick(1500); await flush()
+  fail = true
+  t.mock.timers.tick(1500); await flush()
+  fail = false; completions = [{ ...task, taskId: 'DEV-401', status: 'done' }]
+  t.mock.timers.tick(1500); await flush()
+  assert.equal(events.length, 1)
+})
+
+test('simultaneous completion queues the result before the newly visible downstream assignment', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const child = { taskId: 'DEV-400', title: 'Implementation', agentId: 'developer', status: 'open' as const }
+  const next = { taskId: 'DEV-401', title: 'Verify', target: 'browser-qa' as const, sha: 'a'.repeat(40) }
+  let data: OfficeSnapshot = { ...live, tasks: [], completions: [child] }
+  t.mock.method(globalThis, 'fetch', async () => Response.json(data))
+  const events: Handoff[] = []
+  const queue = handoffQueue()
+  const stop = pollOffice(() => {}, () => assert.fail('Unexpected failure'), event => { events.push(event); queue.push(event, 0) })
+  t.after(stop)
+  await flush()
+  data = { ...data, tasks: [next], completions: [{ ...child, status: 'done' }] }
+  t.mock.timers.tick(1500); await flush()
+  assert.deepEqual(events.map(e => [e.source, e.target]), [['developer', 'orchestrator'], ['orchestrator', 'browser-qa']])
+  assert.equal(queue.advance(0, false)?.event.kind, 'result')
+  assert.equal(queue.advance(11000, false)?.event.sha, next.sha)
+  t.mock.timers.tick(1500); await flush()
+  assert.equal(events.length, 2)
 })

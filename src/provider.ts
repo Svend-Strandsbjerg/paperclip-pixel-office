@@ -1,9 +1,9 @@
 import { parseDeliveries } from './pipeline-view'
 import type { Delivery } from './pipeline'
 import { normalizeAppearance, normalizeAvatarUrl, identityText, type Identity } from './identity'
-import { handoffTracker, type Handoff, type Task } from './handoff'
+import { completionTracker, handoffTracker, type Completion, type Handoff, type Task } from './handoff'
 import { ROLES, type Activity, type RoleId, type RosterAgent } from './state'
-export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<string, Activity>; agents?: RosterAgent[]; identities?: Record<string, Identity>; tasks?: Task[] | null; deliveries?: Delivery[] | null }
+export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<string, Activity>; agents?: RosterAgent[]; identities?: Record<string, Identity>; tasks?: Task[] | null; completions?: Completion[] | null; deliveries?: Delivery[] | null }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
@@ -59,12 +59,23 @@ export function parseSnapshot(value: unknown): OfficeSnapshot {
       })
     }
   }
+  if (value.completions != null) {
+    if (!Array.isArray(value.completions)) throw new Error('Invalid completions')
+    const ids = new Set<string>()
+    result.completions = value.completions.map(task => {
+      if (!isPlainObject(task) || typeof task.taskId !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(task.taskId) || task.taskId.length > 32 || ids.has(task.taskId) ||
+        typeof task.title !== 'string' || task.title.length > 80 || typeof task.agentId !== 'string' || !task.agentId || !['open', 'done'].includes(task.status as string)) throw new Error('Invalid completion')
+      ids.add(task.taskId)
+      return { taskId: task.taskId, title: task.title, agentId: task.agentId, status: task.status as Completion['status'] }
+    })
+  }
   if (Object.hasOwn(value, 'deliveries')) result.deliveries = parseDeliveries(value.deliveries)
   return result
 }
 /** Serial polling: no overlapping requests; retain the last valid state on failure. */
 export function pollOffice(onState: (data: OfficeSnapshot) => void, onFailure: () => void, onHandoff: (event: Handoff) => void = () => {}) {
   const track = handoffTracker()
+  const returns = completionTracker()
   let stopped = false
   let timer: ReturnType<typeof setTimeout>
   let controller: AbortController | undefined
@@ -77,10 +88,11 @@ export function pollOffice(onState: (data: OfficeSnapshot) => void, onFailure: (
       const data = parseSnapshot(await response.json())
       if (!stopped) {
         onState(data)
+        for (const event of returns(data.mode === 'live' ? data.completions ?? null : null)) onHandoff(event)
         for (const event of track(data.mode === 'live' ? data.tasks ?? null : null)) onHandoff(event)
       }
       if (data.mode === 'demo') stopped = true
-    } catch { track(null); if (!stopped) onFailure() }
+    } catch { track(null); returns(null); if (!stopped) onFailure() }
     finally {
       clearTimeout(timeout)
       if (!stopped) timer = setTimeout(tick, 1500)

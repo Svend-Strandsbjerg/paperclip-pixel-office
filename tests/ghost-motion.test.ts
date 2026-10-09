@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { facing, FRONT, ghostMotion, hoverProfile } from '../src/ghost-motion.ts'
-import { handoffPose, HANDOFF_SECONDS, WALK_SECONDS } from '../src/handoff.ts'
-import { rosterLayout } from '../src/state.ts'
+import { deliveryPose, HANDOFF_SECONDS, WALK_SECONDS } from '../src/handoff.ts'
+import { ROLES, rosterLayout } from '../src/state.ts'
 
 test('identity timing is deterministic, varied and independent of roster order/activity', () => {
   const ids = Array.from({ length: 40 }, (_, i) => `agent-${i}`)
@@ -58,11 +58,11 @@ test('reduced motion immediately resets decoration and retains route positions',
   const motion = ghostMotion(); motion.sync(['ghost'])
   motion.sample('ghost', 1, 1, false, 1, -1)
   assert.deepEqual(motion.sample('ghost', 2, 0.016, true, 1, -1), FRONT)
-  for (const target of ['developer', 'browser-qa', 'reviewer'] as const) {
-    const start = handoffPose(0, target)
-    const end = handoffPose(HANDOFF_SECONDS, target)
+  for (const target of ROLES.slice(1)) {
+    const start = deliveryPose(0, ROLES[0], target)
+    const end = deliveryPose(HANDOFF_SECONDS, ROLES[0], target)
     assert.equal(start.x, end.x); assert.equal(start.y, end.y)
-    const arrival = handoffPose(WALK_SECONDS, target)
+    const arrival = deliveryPose(WALK_SECONDS, ROLES[0], target)
     assert.equal(arrival.phase, 'bubble')
     const snapshot = { ...arrival }
     motion.sample('ghost', 3, 0.016, false, arrival.dx, arrival.dy)
