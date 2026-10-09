@@ -1,6 +1,6 @@
 import { createGithubReader, loadDeliveries } from './pipeline.ts'
 import { demoDeliveries, type Delivery } from '../src/pipeline.ts'
-import { appearancePalette, identityText, type Identity } from '../src/identity.ts'
+import { normalizeAppearance, identityText, type Identity } from '../src/identity.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ROLES, demoSnapshot, type Activity, type RoleId } from '../src/state.ts'
 
@@ -92,12 +92,12 @@ export function mapIdentities(input: unknown, ids: Record<RoleId, string>): Reco
   const agents = input as Record<string, unknown>[]
   return Object.fromEntries(ROLES.map(role => {
     const agent = agents.find(a => a.id === ids[role.id])!
-    const paletteId = appearancePalette(agent.appearance)
-    return [role.id, { name: identityText(agent.name, role.name), role: identityText(agent.role, role.name), ...(paletteId ? { paletteId } : {}) }]
+    const appearance = normalizeAppearance(agent.appearance)
+    return [role.id, { name: identityText(agent.name, role.name), role: identityText(agent.role, role.name), ...(appearance ? { appearance } : {}) }]
   })) as Record<RoleId, Identity>
 }
-export const demoIdentities = Object.fromEntries(ROLES.map((role, i) => [role.id, {
-  name: role.name, role: role.name, paletteId: ['bubblegum-sky', 'tangerine-cobalt', 'lime-lagoon', 'violet-ember'][i],
+export const demoIdentities = Object.fromEntries(ROLES.map(role => [role.id, {
+  name: role.name, role: role.name,
 }]))
 
 export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch, now = Date.now) {

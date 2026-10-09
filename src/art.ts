@@ -1,20 +1,32 @@
-import { PALETTES } from './identity'
+import { PALETTES, appearanceKey } from './identity'
 import type { VisualAgent, VisualState } from './state'
 import { getCharacterSprites, CHARACTER_PALETTES } from './vendor/pixel-agents/office/sprites/spriteData'
 import { getCachedSprite } from './vendor/pixel-agents/office/sprites/spriteCache'
 import { Direction } from './vendor/pixel-agents/office/types'
 
+const sprites = new Map<string, ReturnType<typeof getCharacterSprites>>()
 export function agentSprites(agent: VisualAgent) {
-  const colors = agent.identity?.paletteId ? PALETTES[agent.identity.paletteId] : undefined
-  // Keep distinct role skin/hair colors and use authoritative palette for clothing.
-  return getCharacterSprites(agent.palette, 0, colors ? {
-    ...CHARACTER_PALETTES[agent.palette], shirt: colors[0], pants: colors[1], shoes: '#283c43',
-  } : undefined)
+  const key = portraitKey(agent)
+  const cached = sprites.get(key)
+  if (cached) return cached
+  const colors = agent.identity?.appearance ? PALETTES[agent.identity.appearance.paletteId] : undefined
+  // The entire live character palette belongs to the appearance, never the desk role.
+  const result = colors ? getCharacterSprites(0, 0, {
+    hair: colors[0], skin: colors[1], shirt: colors[0], pants: colors[1], shoes: '#283c43',
+  }) : getCharacterSprites(agent.palette, 0, CHARACTER_PALETTES[agent.palette])
+  sprites.set(key, result)
+  return result
 }
+export function agentAccent(agent: VisualAgent) {
+  return agent.identity?.appearance ? PALETTES[agent.identity.appearance.paletteId][0] : agent.color
+}
+export function portraitKey(agent: VisualAgent) {
+  return appearanceKey(agent.identity) ?? `local:${agent.id}`
+}
+
 export function paintPortrait(image: HTMLImageElement, agent: VisualAgent) {
-  const key = `${agent.id}:${agent.identity?.paletteId ?? "local"}`
+  const key = portraitKey(agent)
   if (image.dataset.identity === key) return
-  image.dataset.identity = key
   const canvas = document.createElement("canvas")
   canvas.width = 48; canvas.height = 64
   const ctx = canvas.getContext('2d')!
@@ -22,6 +34,7 @@ export function paintPortrait(image: HTMLImageElement, agent: VisualAgent) {
   ctx.clearRect(0, 0, 48, 64)
   ctx.drawImage(getCachedSprite(agentSprites(agent).walk[Direction.DOWN][1], 3), 0, -8)
   image.src = canvas.toDataURL()
+  image.dataset.identity = key
 }
 
 /** Original integer-grid artwork, behind the existing depth-sorted furniture.
@@ -51,7 +64,7 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
   }
   for (const agent of state) {
     const x = agent.col * 16 + 8, y = agent.row * 16 + 8
-    const accent = agent.identity?.paletteId ? PALETTES[agent.identity.paletteId][0] : agent.color
+    const accent = agentAccent(agent)
     rect(x - 43, y - 18, 88, 55, '#8b826e')
     rect(x - 44, y - 20, 88, 54, '#45606a')
     rect(x - 41, y - 17, 82, 48, '#354e58')

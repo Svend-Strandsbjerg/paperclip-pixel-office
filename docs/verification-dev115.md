@@ -1,0 +1,14 @@
+# DEV-115 / DEV-116 implementation verification
+
+Date: 2026-10-09. Branch: `DEV-115-pixel-office-paperclip-native-avatars`.
+
+- `npm ci`: passed; 25 packages installed, zero audit vulnerabilities. npm reported its existing esbuild install-script advisory; build succeeded.
+- `npm test`: passed, 80 tests, zero failures/skips. Includes server allowlist projection, strict appearance validation, all supported palettes, actual four current palettes, cross-role determinism, live tuple change, local fallback disclosure, portrait/canvas sprite consistency and portrait cache invalidation. Existing workflow/pipeline integration tests pass.
+- `npm run build`: passed (TypeScript `tsc --noEmit` and Vite production bundle). No separate lint script exists.
+- `git diff --check`: passed.
+- Production runtime smoke: started the production Node server on a temporary loopback port with live environment bindings; `/health` returned HTTP 200 `{ "status": "ok" }`. `/api/office-state` returned HTTP 200, mode live, and exactly the four real normalized appearances listed in `paperclip-native-avatars.md`. Confirmed the API key did not occur in the response. Process stopped afterward; no deployment change.
+- Installed-instance read-only probes: authenticated agent-list reads, served client implementation, anonymous/authenticated avatar bytes, sizes/scales/poses and invalid values. Details and access limits in `paperclip-native-avatars.md`.
+
+`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npm run test:browser`: **30 passed (4.5m)**, zero failures/skips in the final complete run. Covers the full existing suite: desktop/390px/320px layouts, motion/reduced motion, Developer/QA/Reviewer/rework flows, queue/hidden-tab behavior, Delivery Pipeline Overview and exact SHA text/focus, production read-only credential boundary, live appearance updates, missing appearance fallback, restoration, reload and outage/recovery. Full Chromium was explicitly requested by this assignment. The first attempt could not start because proxy routing made Playwright report loopback port 4288 as occupied; excluding `127.0.0.1,localhost` with `NO_PROXY`/`no_proxy` fixed the harness. No project security or network policy was changed. A subsequent run was interrupted after a rebuild invalidated asset filenames held by its already-running server (16 tests had passed, then page loads failed); the final complete run uses an unchanged final build and fresh server.
+
+No Paperclip state mutation was introduced by the application or used to simulate appearance changes. Browser integration uses an HTTP fixture to update appearance, lose it, recover it, and verify stable reload/outage behavior. Only Developer's own progress/handoff task metadata is written. No workflow routing, downstream task creation, merge, deployment or full manual Browser QA was performed.
