@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { handoffQueue, MAX_WAIT_MS, SEEN_LIMIT, handoffTracker, handoffPose, HANDOFF_SECONDS, demoHandoff } from '../src/handoff'
+import { handoffQueue, MAX_WAIT_MS, SEEN_LIMIT, handoffTracker, demoHandoff } from '../src/handoff'
 import { mapTasks } from '../server/office-state'
 import { parseSnapshot } from '../src/provider'
 import { demoSnapshot } from '../src/state'
@@ -28,15 +28,6 @@ test('hydration, assignment, creation, updates, repeated polls, reload and recov
   const assignment = handoffTracker()
   assert.deepEqual(assignment(mapTasks([parent, { ...child, assigneeAgentId: null }], ids)), [])
   assert.equal(assignment(mapTasks([parent, child], ids))[0].taskId, 'DEV-36')
-})
-test('fixed aisle route starts at own seat, reaches Developer neighbor, pauses and returns exactly', () => {
-  assert.deepEqual([handoffPose(0).x, handoffPose(0).y], [104, 104])
-  assert.equal(handoffPose(2).phase, 'outbound')
-  assert.deepEqual([handoffPose(4).x, handoffPose(4).y], [264, 104])
-  assert.equal(handoffPose(6).phase, 'bubble')
-  assert.equal(handoffPose(8).phase, 'returning')
-  assert.deepEqual([handoffPose(HANDOFF_SECONDS).x, handoffPose(HANDOFF_SECONDS).y], [104, 104])
-  assert.equal(demoHandoff.target, 'developer')
 })
 test('browser rejects unbounded or internal task identifiers', () => {
   for (const task of [{ taskId: 'internal-uuid', title: 'Title' }, { taskId: 'DEV-1', title: 'x'.repeat(81) }]) {
@@ -117,8 +108,6 @@ test('SHA comes only from an unambiguous full labeled QA assignment value', asyn
 })
 
 test('shared route and queue visit Developer then QA and return to the permanent desk', () => {
-  assert.deepEqual([handoffPose(4, 'browser-qa').x, handoffPose(4, 'browser-qa').y], [120, 200])
-  assert.deepEqual([handoffPose(HANDOFF_SECONDS, 'browser-qa').x, handoffPose(HANDOFF_SECONDS, 'browser-qa').y], [104, 104])
   const queue = handoffQueue()
   queue.push(demoHandoff, 0)
   queue.push({ ...demoHandoff, target: 'browser-qa' }, 1)
@@ -156,11 +145,6 @@ test('Reviewer hydration, dedup, removal/reappearance, restart and outage recove
 })
 
 test('Reviewer shares the sequential queue and returns precisely to the Orchestrator desk', () => {
-  assert.deepEqual([handoffPose(0, 'reviewer').x, handoffPose(0, 'reviewer').y], [104, 104])
-  assert.deepEqual([handoffPose(4, 'reviewer').x, handoffPose(4, 'reviewer').y], [264, 200])
-  assert.equal(handoffPose(6, 'reviewer').phase, 'bubble')
-  assert.equal(handoffPose(8, 'reviewer').phase, 'returning')
-  assert.deepEqual([handoffPose(HANDOFF_SECONDS, 'reviewer').x, handoffPose(HANDOFF_SECONDS, 'reviewer').y], [104, 104])
   const queue = handoffQueue()
   queue.push({ ...demoHandoff, target: 'browser-qa' }, 0)
   assert.equal(queue.advance(0, false)?.event.target, 'browser-qa')
@@ -248,7 +232,6 @@ test('rework crosses the browser boundary and shares queue, route and reduced-mo
   assert.equal(queue.advance(0, false)?.event.target, 'browser-qa')
   queue.push(demoReworkHandoff, 1)
   assert.equal(queue.advance(11000, false)?.event.context, 'rework')
-  assert.deepEqual([handoffPose(11, 'developer').x, handoffPose(11, 'developer').y], [104, 104])
   assert.equal(queue.advance(22000, false), undefined)
   queue.push(demoReworkHandoff, 23000)
   assert.equal(queue.advance(23000, true)?.event.taskId, 'DEMO-4')

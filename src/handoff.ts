@@ -32,32 +32,9 @@ export function handoffTracker() {
   }
 }
 
-// All destinations share glide timing; routes stay in the open aisles.
-const routes = { developer: [[6, 6], [6, 5], [16, 5], [16, 6]], 'browser-qa': [[6, 6], [8, 6], [8, 12], [7, 12]], reviewer: [[6, 6], [8, 6], [8, 12], [16, 12]] } as const
 export const WALK_SECONDS = 4
 export const BUBBLE_SECONDS = 3
 export const HANDOFF_SECONDS = WALK_SECONDS * 2 + BUBBLE_SECONDS
-export function handoffPose(seconds: number, target: Destination = 'developer') {
-  const route = routes[target]
-  const length = route.slice(1).reduce((sum, point, i) => sum + Math.abs(point[0] - route[i][0]) + Math.abs(point[1] - route[i][1]), 0)
-  const returning = seconds >= WALK_SECONDS + BUBBLE_SECONDS
-  const phase = seconds < WALK_SECONDS ? 'outbound' : returning ? 'returning' : 'bubble'
-  const progress = phase === 'bubble' ? 1 : Math.min(1, Math.max(0, (returning ? seconds - WALK_SECONDS - BUBBLE_SECONDS : seconds) / WALK_SECONDS))
-  const distance = (returning ? 1 - progress : progress) * length
-  let remaining = distance
-  for (let i = 1; i < route.length; i++) {
-    const [x, y] = route[i - 1], [tx, ty] = route[i]
-    const length = Math.abs(tx - x) + Math.abs(ty - y)
-    if (remaining <= length || i === route.length - 1) {
-      const fraction = remaining / length
-      return { phase, x: (x + (tx - x) * fraction) * 16 + 8, y: (y + (ty - y) * fraction) * 16 + 8,
-        dx: (tx - x) * (returning ? -1 : 1), dy: (ty - y) * (returning ? -1 : 1) }
-    }
-    remaining -= length
-  }
-  throw new Error('Invalid route')
-}
-
 // Keep recent context without replaying a backlog. Times are monotonic milliseconds.
 export const PENDING_LIMIT = 2
 export const MAX_WAIT_MS = 12000
@@ -85,13 +62,15 @@ export function handoffQueue() {
 export function completionTracker() {
   let previous: Map<string, Completion> | undefined
   const seen = new Set<string>()
+  let saturated = false
   return (tasks: Completion[] | null): Handoff[] => {
     if (tasks === null) { previous = undefined; return [] }
+    if (saturated) return []
     const events: Handoff[] = []
     for (const task of tasks) {
       const before = previous?.get(task.taskId)
       if (task.status === 'done' && !seen.has(task.taskId)) {
-        if (seen.size >= SEEN_LIMIT) { previous = undefined; return [] }
+        if (seen.size >= SEEN_LIMIT) { saturated = true; previous = undefined; return [] }
         seen.add(task.taskId)
         if (before?.status === 'open' && before.agentId === task.agentId) events.push({ taskId: task.taskId, title: task.title, source: task.agentId, target: 'orchestrator', kind: 'result' })
       }
@@ -103,7 +82,11 @@ export function completionTracker() {
 
 /** Fixed office aisles also serve future desks on expanded rows. */
 export function deliveryPose(seconds: number, source: { col: number; row: number }, target: { col: number; row: number }) {
-  const points = [[source.col * 16 + 8, source.row * 16 + 8], [216, source.row * 16 + 8], [216, target.row * 16 + 8], [target.col * 16 + 8 + (target.col < 12 ? 24 : -24), target.row * 16 + 8]]
+  // The left row-12 seat exits beside its desk before passing above the plant.
+  const aisle = (seat: { col: number; row: number }) => seat.col < 12 && seat.row === 12
+    ? [[144, 200], [144, 176], [216, 176]]
+    : [[216, seat.row * 16 + 8]]
+  const points = [[source.col * 16 + 8, source.row * 16 + 8], ...aisle(source), ...aisle(target).reverse(), [target.col * 16 + 8 + (target.col < 12 ? 24 : -24), target.row * 16 + 8]]
   const returning = seconds >= WALK_SECONDS + BUBBLE_SECONDS
   const phase = seconds < WALK_SECONDS ? 'outbound' : returning ? 'returning' : 'bubble'
   const progress = phase === 'bubble' ? 1 : Math.min(1, Math.max(0, (seconds - (returning ? WALK_SECONDS + BUBBLE_SECONDS : 0)) / WALK_SECONDS))

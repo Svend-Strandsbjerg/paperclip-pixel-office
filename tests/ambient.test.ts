@@ -26,13 +26,21 @@ test('ambient paths are deterministic, staggered, bounded, and clear of solid fu
   assert.ok(movingAt.size > 12)
 })
 
-test('working settles at desk, handoffs cancel wandering immediately, reduced motion disables it', () => {
+test('working settles at desk, handoffs settle wandering smoothly, reduced motion disables it', () => {
   const state = mapVisualState({})
   const motion = ambientMotion(); motion.sync(state)
   for (let t = 0; t < 100; t += 0.1) assert.equal(motion.sample('developer', t, 0.1, false, false, false).y, 0)
   let time = 0
   while (motion.sample('developer', time, 0.1, true, false, false).y < 2) time += 0.1
-  assert.equal(motion.sample('developer', time, 0.1, true, false, true).y, 0)
+  const before = motion.sample('developer', time, 0, true, false, false)
+  let previous = before
+  for (let i = 0; i < 120; i++) {
+    const next = motion.sample('developer', time + i / 60, 1 / 60, true, false, true)
+    assert.ok(Math.hypot(next.x - previous.x, next.y - previous.y) < 0.5)
+    assert.ok(next.y <= previous.y)
+    previous = next
+  }
+  assert.ok(previous.y < 0.01)
   assert.equal(motion.sample('developer', time, 0.1, true, true, false).y, 0)
   motion.sample('developer', time, 1, true, false, false)
   for (let i = 0; i < 100; i++) motion.sample('developer', time, 0.1, false, false, false)

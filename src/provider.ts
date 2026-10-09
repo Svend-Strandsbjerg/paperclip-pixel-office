@@ -88,8 +88,8 @@ export function pollOffice(onState: (data: OfficeSnapshot) => void, onFailure: (
       const data = parseSnapshot(await response.json())
       if (!stopped) {
         onState(data)
-        for (const event of track(data.mode === 'live' ? data.tasks ?? null : null)) onHandoff(event)
         for (const event of returns(data.mode === 'live' ? data.completions ?? null : null)) onHandoff(event)
+        for (const event of track(data.mode === 'live' ? data.tasks ?? null : null)) onHandoff(event)
       }
       if (data.mode === 'demo') stopped = true
     } catch { track(null); returns(null); if (!stopped) onFailure() }

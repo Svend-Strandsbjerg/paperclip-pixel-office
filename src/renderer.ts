@@ -67,8 +67,8 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
         const offset = ambient.sample(agent.id, elapsed, frameDelta, agent.activity === 'idle', motion.matches, !!active)
         const moving = visitor && visitor.phase !== 'bubble'
         const pose = ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : offset.dx, moving ? visitor.dy : offset.dy)
-        const x = visitor?.x ?? agent.col * 16 + 8 + offset.x
-        const y = (visitor?.y ?? agent.row * 16 + 8 + offset.y) + 44
+        const x = (visitor?.x ?? agent.col * 16 + 8) + offset.x
+        const y = ((visitor?.y ?? agent.row * 16 + 8) + offset.y) + 44
         paintGhost(ctx, agent, x, y, pose)
         if (courier === agent.id && (motion.matches || travel?.carrying)) {
           // Pixel document is attached to the courier, never ambient movement.

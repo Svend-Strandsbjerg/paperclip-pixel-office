@@ -72,7 +72,7 @@ export function mapCompletions(input: unknown, orchestrator: string | undefined,
   return input.filter(i => i && typeof i.parentId === 'string' && parents.has(i.parentId) && agents.has(i.assigneeAgentId) && i.assigneeAgentId !== orchestrator &&
     typeof i.identifier === 'string' && /^[A-Za-z][A-Za-z0-9_]*-[0-9]+$/.test(i.identifier) && i.identifier.length <= 32 && typeof i.title === 'string' &&
     ['todo', 'backlog', 'in_progress', 'in_review', 'blocked', 'done'].includes(i.status))
-    .map(i => ({ taskId: i.identifier, title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 80), agentId: i.assigneeAgentId, status: i.status === 'done' ? 'done' : 'open' }))
+    .map(i => ({ taskId: i.identifier, title: i.title.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Untitled task', agentId: i.assigneeAgentId, status: i.status === 'done' ? 'done' : 'open' }))
 }
 
 // Paperclip supports at most 1000 issues per list read. A full page may be truncated.

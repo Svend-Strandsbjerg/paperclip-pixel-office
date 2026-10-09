@@ -23,8 +23,8 @@ export function ambientMotion() {
       const progress = enabled && !reduced && !handoff && seconds >= e.resumeAt && cycle < 8 ? Math.sin(Math.PI * cycle / 8) ** 2 : 0
       const x = (e.phase < 0.5 ? -1 : 1) * 8 * progress, y = 3 * progress
       const blend = 1 - Math.exp(-Math.max(0, dt) / 0.3)
-      e.x = reduced || handoff ? 0 : e.x + (x - e.x) * blend
-      e.y = reduced || handoff ? 0 : e.y + (y - e.y) * blend
+      e.x = reduced ? 0 : e.x + (x - e.x) * blend
+      e.y = reduced ? 0 : e.y + (y - e.y) * blend
       return { x: e.x, y: e.y, dx: Math.abs(e.x - previousX) > 0.005 ? e.x - previousX : 0, dy: Math.abs(e.y - previousY) > 0.005 ? e.y - previousY : 0 }
     },
   }

@@ -98,4 +98,13 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     assert.equal(canvas.dataset.handoff, 'rest')
     assert.ok(Math.abs(rotations[sourceIndex]) < 0.001)
   }
+  // Begin a delivery during an actual excursion; the rendered courier must not
+  // jump back to its desk when deliveryPose takes over its base position.
+  for (let i = 0; i < 4000 && Math.abs(translations[0][0] - 104 * 3) < 12; i++) frame(now + 16)
+  assert.ok(Math.abs(translations[0][0] - 104 * 3) >= 12)
+  const wandering = [...translations[0]]
+  office.handoff(demoHandoff)
+  frame(now + 16)
+  assert.ok(Math.hypot(translations[0][0] - wandering[0], translations[0][1] - wandering[1]) < 3)
+
 })
