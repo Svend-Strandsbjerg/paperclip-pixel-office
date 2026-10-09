@@ -71,3 +71,14 @@ for (const profile of ACTIVITY_PROFILES) test(`${profile} has distinct animated 
 test('all six visual profiles are distinguishable', () => {
   assert.equal(new Set(ACTIVITY_PROFILES.map(p => JSON.stringify(drawing(p, 0.65)))).size, 6)
 })
+
+// The local effect envelope stays beside the native 32px avatar at every phase.
+// Browser coverage checks this same envelope against the actual DOM labels.
+test('every profile stays in the avatar-side envelope throughout its cycle', () => {
+  for (const profile of ACTIVITY_PROFILES) for (let step = 0; step <= 100; step++) {
+    for (const { coords: [x, y, w, h] } of drawing(profile, step / 100)) {
+      assert.ok(x >= 20 && x + w <= 68, `${profile}: horizontal envelope`)
+      assert.ok(y >= -34 && y + h <= -10, `${profile}: vertical envelope`)
+    }
+  }
+})

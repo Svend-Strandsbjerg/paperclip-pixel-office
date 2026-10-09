@@ -28,9 +28,10 @@ handoff bubbles remain visible; switch back to restore decorative motion.
 `tests/browser/office.spec.ts` covers demo controls, handoffs and reduced motion.
 `tests/browser/roster.spec.ts` provides intercepted office-state fixtures for newly
 added agents and a 40-agent roster; mark fixture agents working to exercise the
-shared activity pool. Browser QA should check effects stay small and below the
+shared activity pool. Browser QA should check effects stay small and beside the
 recognizable native ghosts, remain readable with several agents, and do not obscure
-labels. These browser specs were not run as part of implementation validation.
+labels. R2 validation runs the office, roster and pipeline specs, including
+label clearance at 390px/1440px with 4/40 working agents in both motion settings.
 
 Automated unit/integration coverage: `tests/work-activities.test.ts` and
 `tests/ghost-renderer.test.ts`, plus existing hover, ambient and handoff tests.

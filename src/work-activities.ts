@@ -95,10 +95,10 @@ const profiles: Record<ActivityProfile, Painter> = {
 export function paintWorkActivity(ctx: CanvasRenderingContext2D, anchor: { x: number; y: number }, frame: ActivityFrame, scale = 1) {
   ctx.save()
   ctx.globalAlpha = frame.opacity * 0.9
-  // Effects sit just below the avatar, leaving its face and silhouette readable.
+  // Effects sit beside the avatar, clear of its face and silhouette.
   profiles[frame.profile]((x, y, w, h, color = '#eef0d9') => {
     ctx.fillStyle = color
-    ctx.fillRect((anchor.x + x) * scale, (anchor.y + 9 + y) * scale, w * scale, h * scale)
+    ctx.fillRect((anchor.x + (42 + x)) * scale, (anchor.y + (y - 24)) * scale, w * scale, h * scale)
   }, frame.progress)
   ctx.restore()
 }
