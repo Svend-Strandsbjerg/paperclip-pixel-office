@@ -47,6 +47,12 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
   const upstreamMethods: string[] = []
   const upstream = createServer((req, res) => {
     upstreamMethods.push(req.method!)
+    if (req.url?.startsWith('/api/agent-avatars/')) {
+      expect(req.headers.authorization).toBeUndefined()
+      res.setHeader('Content-Type', 'image/png')
+      res.end(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aP9sAAAAASUVORK5CYII=', 'base64'))
+      return
+    }
     res.setHeader('Content-Type', 'application/json')
     if (req.headers.authorization !== `Bearer ${secret}`) { res.writeHead(401); res.end('{}'); return }
     if (issuesBroken && req.url?.includes('/issues')) { res.writeHead(503); res.end('{}'); return }

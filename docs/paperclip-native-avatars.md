@@ -1,5 +1,7 @@
 # Paperclip-native appearance (DEV-115 / DEV-116)
 
+Historical implementation note: the human sprite rendering described below is superseded by [native ghost avatars](paperclip-ghost-avatars.md).
+
 This supersedes the appearance decision in `identity-art-direction.md`. The office is a pixel interpretation of Paperclip appearance, not an exact reproduction of its PNG avatar.
 
 ## Installed-instance investigation, 2026-10-09

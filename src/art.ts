@@ -1,21 +1,9 @@
 import { PALETTES, appearanceKey } from './identity'
 import type { VisualAgent, VisualState } from './state'
-import { getCharacterSprites, CHARACTER_PALETTES } from './vendor/pixel-agents/office/sprites/spriteData'
-import { getCachedSprite } from './vendor/pixel-agents/office/sprites/spriteCache'
-import { Direction } from './vendor/pixel-agents/office/types'
-
-const sprites = new Map<string, ReturnType<typeof getCharacterSprites>>()
-export function agentSprites(agent: VisualAgent) {
-  const key = portraitKey(agent)
-  const cached = sprites.get(key)
-  if (cached) return cached
-  const colors = agent.identity?.appearance ? PALETTES[agent.identity.appearance.paletteId] : undefined
-  // The entire live character palette belongs to the appearance, never the desk role.
-  const result = colors ? getCharacterSprites(0, 0, {
-    hair: colors[0], skin: colors[1], shirt: colors[0], pants: colors[1], shoes: '#283c43',
-  }) : getCharacterSprites(agent.palette, 0, CHARACTER_PALETTES[agent.palette])
-  sprites.set(key, result)
-  return result
+/** The same native image is used on the canvas and in the roster. */
+export function avatarPath(agent: VisualAgent) {
+  const a = agent.identity?.appearance
+  return a ? `/api/office-avatar/${a.characterVersion}/${a.paletteId}.png` : undefined
 }
 export function agentAccent(agent: VisualAgent) {
   return agent.identity?.appearance ? PALETTES[agent.identity.appearance.paletteId][0] : agent.color
@@ -23,18 +11,49 @@ export function agentAccent(agent: VisualAgent) {
 export function portraitKey(agent: VisualAgent) {
   return appearanceKey(agent.identity) ?? `local:${agent.id}`
 }
-
+// Neutral ghost for demo, missing metadata, loading and failed assets; never a fabricated identity.
+export const fallbackGhost = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="#c6ced4" d="M14 51V29a18 18 0 0 1 36 0v22l-9-5-9 5-9-5z"/><path fill="#283c43" d="M24 27h5v7h-5zm12 0h5v7h-5z"/></svg>')
+const ghosts = new Map<string, { image: HTMLImageElement; retryAt: number }>()
+export function ghostImage(agent: VisualAgent, now = Date.now()) {
+  const path = avatarPath(agent) ?? fallbackGhost
+  let entry = ghosts.get(path)
+  if (!entry || (entry.retryAt > 0 && now >= entry.retryAt)) {
+    const image = new Image()
+    entry = { image, retryAt: 0 }
+    const pending = entry
+    image.onerror = () => { pending.retryAt = Date.now() + 30_000 }
+    image.src = path
+    ghosts.set(path, entry)
+  }
+  return entry.image.complete && entry.image.naturalWidth > 0 ? entry.image : undefined
+}
+export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x: number, y: number) {
+  ctx.fillStyle = '#263d4366'
+  ctx.beginPath(); ctx.ellipse(x * 3, (y + 8) * 3, 21, 5, 0, 0, Math.PI * 2); ctx.fill()
+  const image = ghostImage(agent)
+  if (image) ctx.drawImage(image, (x - 16) * 3, (y - 26) * 3, 96, 96)
+  else {
+    ctx.fillStyle = '#c6ced4'
+    ctx.beginPath(); ctx.arc(x * 3, (y - 12) * 3, 24, Math.PI, 0)
+    ctx.lineTo((x + 8) * 3, (y + 1) * 3)
+    for (let i = 8; i >= -8; i -= 4) ctx.lineTo((x + i) * 3, (y + (i % 8 === 0 ? 1 : -2)) * 3)
+    ctx.closePath(); ctx.fill()
+    ctx.fillStyle = '#283c43'
+    ctx.fillRect((x - 4) * 3, (y - 13) * 3, 6, 9)
+    ctx.fillRect((x + 2) * 3, (y - 13) * 3, 6, 9)
+  }
+}
 export function paintPortrait(image: HTMLImageElement, agent: VisualAgent) {
   const key = portraitKey(agent)
-  if (image.dataset.identity === key) return
-  const canvas = document.createElement("canvas")
-  canvas.width = 48; canvas.height = 64
-  const ctx = canvas.getContext('2d')!
-  ctx.imageSmoothingEnabled = false
-  ctx.clearRect(0, 0, 48, 64)
-  ctx.drawImage(getCachedSprite(agentSprites(agent).walk[Direction.DOWN][1], 3), 0, -8)
-  image.src = canvas.toDataURL()
+  if (image.dataset.identity === key && !(Number(image.dataset.retryAt) <= Date.now())) return
   image.dataset.identity = key
+  delete image.dataset.retryAt
+  image.onerror = () => {
+    image.onerror = null
+    image.src = fallbackGhost
+    image.dataset.retryAt = String(Date.now() + 30_000)
+  }
+  image.src = avatarPath(agent) ?? fallbackGhost
 }
 
 /** Original integer-grid artwork, behind the existing depth-sorted furniture.

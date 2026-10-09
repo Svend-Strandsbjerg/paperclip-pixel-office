@@ -1,3 +1,4 @@
+import { avatarMiddleware } from './avatars.ts'
 import { createGithubReader, loadDeliveries } from './pipeline.ts'
 import { demoDeliveries, type Delivery } from '../src/pipeline.ts'
 import { normalizeAppearance, identityText, type Identity } from '../src/identity.ts'
@@ -101,9 +102,10 @@ export const demoIdentities = Object.fromEntries(ROLES.map(role => [role.id, {
 }]))
 
 export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch, now = Date.now) {
+  const avatars = avatarMiddleware(env, fetcher)
   const github = createGithubReader(fetcher, env.OFFICE_GITHUB_TOKEN, now)
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
-    if (req.url?.split('?')[0] !== '/api/office-state') return next()
+    if (req.url?.split('?')[0] !== '/api/office-state') return avatars(req, res, next)
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Cache-Control', 'no-store')
     if (req.method !== 'GET') {

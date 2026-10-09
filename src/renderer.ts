@@ -1,4 +1,4 @@
-import { agentSprites, paintStudio } from './art'
+import { paintGhost, paintStudio } from './art'
 import { handoffPose, handoffQueue, type Handoff } from './handoff'
 import { CharacterState, Direction } from './vendor/pixel-agents/office/types'
 import type { VisualState } from './state'
@@ -51,7 +51,11 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
         visitor.dir = pose.phase === 'bubble' ? (active.event.target === 'browser-qa' ? Direction.LEFT : Direction.RIGHT) : pose.dx ? (pose.dx > 0 ? Direction.RIGHT : Direction.LEFT) : (pose.dy > 0 ? Direction.DOWN : Direction.UP)
         visitor.frame = Math.floor(elapsed / 0.15) % 4
       }
-      renderScene(ctx, furniture, characters, 0, 0, 3, null, null, character => agentSprites(state[character.id]))
+      renderScene(ctx, furniture, [], 0, 0, 3, null, null)
+      for (const character of characters) {
+        // Existing routes remain intact; the ghost hovers in front of its computer.
+        paintGhost(ctx, state[character.id], character.x, character.y + 44)
+      }
       for (const agent of state) {
         const x = (agent.col * 16 + 8) * 3
         const y = (agent.row * 16 + 8) * 3
