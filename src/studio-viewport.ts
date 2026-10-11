@@ -18,6 +18,10 @@ export function studioViewport(size: { width: number; height: number }, availabl
     bufferWidth = Math.max(1, Math.floor(width * safeRatio))
     bufferHeight = Math.max(1, Math.floor(height * safeRatio))
     effectivePixelRatio = Math.min(bufferWidth / width, bufferHeight / height)
+    // Cover the shared drawing ratio, with at most one partial edge pixel.
+    // Keep the already-safe bounds even if floating-point multiplication rounds up.
+    bufferWidth = Math.min(bufferWidth, Math.ceil(width * effectivePixelRatio))
+    bufferHeight = Math.min(bufferHeight, Math.ceil(height * effectivePixelRatio))
   }
   return { scale, width, height, bufferWidth, bufferHeight, effectivePixelRatio }
 }

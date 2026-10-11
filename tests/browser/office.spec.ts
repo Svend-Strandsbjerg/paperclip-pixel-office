@@ -164,7 +164,7 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
 })
 
 // Reduced-motion assignments keep every ghost at rest and add a document beside
-// the orchestrator (scene 104, 148; native device pixel ratio). Mask that document and
+// the orchestrator (scene 104, 148; actual backing-buffer scale). Mask that document and
 // only the two participants’ decorative effect regions; all avatar pixels and
 // nonparticipant effects must remain identical.
 async function reducedMotionFrame(canvas: Locator) {
@@ -173,7 +173,7 @@ async function reducedMotionFrame(canvas: Locator) {
     copy.width = node.width; copy.height = node.height
     const context = copy.getContext('2d')!
     context.drawImage(node, 0, 0)
-    const scale = node.getBoundingClientRect().width / 640 * window.devicePixelRatio
+    const scale = node.width / 640
     // Fractional clearRect edges only partially erase rasterized edge pixels.
     // Round outward to cover exactly the pixels touched by the document.
     const left = Math.floor(112 * scale), top = Math.floor(130 * scale)
@@ -196,8 +196,8 @@ async function reducedMotionFrame(canvas: Locator) {
 for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`, () => {
   test.use({ deviceScaleFactor: dpr })
   test('covers fractional document edges while preserving adjacent ghost pixels', async ({ page }) => {
-    for (const width of [736, 836, 864]) {
-      await page.setContent(`<canvas width="${width * dpr}" height="${Math.ceil(448 * width / 640 * dpr)}" style="width:${width}px"></canvas>`)
+    for (const width of [736, 836, 864]) for (const ratio of [dpr, dpr * 0.757]) {
+      await page.setContent(`<canvas width="${Math.floor(width * ratio)}" height="${Math.ceil(448 * width / 640 * ratio)}" style="width:${width}px"></canvas>`)
       const canvas = page.locator('canvas')
       await canvas.evaluate((node: HTMLCanvasElement) => {
         const ctx = node.getContext('2d')!
