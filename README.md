@@ -170,3 +170,27 @@ The office includes a read-only delivery rail with exact-SHA gates, rework and h
 Run `NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npx playwright test tests/browser/roster.spec.ts --reporter=line` in environments with a localhost HTTP proxy. It intercepts only this browser's office-state response to expose an additional agent, then a 40-agent roster, without touching Paperclip or production mappings. The fixture is in the spec; no login is needed. For live QA use an authorized test company whose Paperclip roster already contains an extra agent: do not add it to `PAPERCLIP_AGENT_ROLES`. It appears on the next successful poll. Pixel Office provides no mutation controls or agent-creation endpoint.
 
 The room keeps its original width and adds rows vertically, preserving legible desk size on narrow screens. Long desk labels truncate with full text in their title and roster card; roster text wraps, and large rosters scroll. Browser QA should inspect desktop and 390px layouts, large-roster scrolling, native asset loading, and all specialist routes with motion enabled and reduced motion.
+
+### Occasional office activities
+
+`src/office-activities.ts` owns presentation-only desk → outbound → pause → return
+states. Working ghosts nod over their existing work props, carry a document into
+the right-side collaboration area, work there for five seconds, and return. Idle
+ghosts can visit the coffee shelf, pause with a cup, and carry it back. Activity
+changes remove the old prop immediately and retrace the current path. Actual
+handoffs take priority; reduced motion keeps ghosts at their desks with static
+work graphics. The ghost assets and authoritative activity state are unchanged.
+
+Trips are deterministic by agent identity: the initial delay is 16–42 seconds,
+then a 76–102 second cooldown after returning. Each studio allows one visitor at
+a time. This is a small waypoint system for the current furniture layout, not a
+general navigation/collision engine; desk labels stay at assigned desks.
+
+For QA, start with `npm run build` then
+`OFFICE_MODE=demo HOST=127.0.0.1 PORT=4399 npm run start` (no login). Select **All
+idle** to observe coffee or **All working** to observe document trips. Switch
+state during a trip to check the return and prop removal. The deterministic
+browser fixture accelerates only animation frames, exercises desktop and 390px
+viewports, and captures coffee/work-room/mobile screenshots:
+`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost OFFICE_TEST_PORT=4399 npx playwright test tests/browser/activities.spec.ts --reporter=line`.
+Focused state-machine coverage: `npx tsx --test tests/office-activities.test.ts tests/ghost-renderer.test.ts tests/work-activities.test.ts`.
