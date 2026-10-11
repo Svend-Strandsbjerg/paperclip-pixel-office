@@ -1,0 +1,9 @@
+# DEV-169 implementation notes
+
+The office keeps its existing modular layout, furniture, circulation and ghost motion. Full-width clerestory windows, a distant tree line, wider daylight and a glass perimeter brighten each repeated studio. The canvas artwork remains in `src/art.ts`.
+
+The delivery dashboard reuses projected gates and the same validated identities/portrait renderer as the roster. Numbered cards show source → target routing, names, roles, completion counts and a current-step outline. Pending, active, completed, outdated evidence, rework, blocked and unavailable evidence have distinct labels. Blocked specialist tasks now survive server/client projection; they cannot qualify human merge. Missing identities retain role names and neutral ghosts. Handoffs describe the ordered gate route, not an event audit log. No backend model or animation was added.
+
+Validation: `npm run build` includes TypeScript checking. `npm test` runs unit/integration tests. There is no lint script or CI workflow. Targeted browser validation: `OFFICE_TEST_PORT=4399 npx playwright test tests/browser/pipeline.spec.ts --reporter=line` (clear HTTP(S)/ALL proxy variables if localhost requests are proxied). This is the only browser spec run. Desktop 1440px and mobile 375px screenshots were manually inspected; the spec additionally covers 320px, reduced motion, contrast, focus retention and native-avatar mapping.
+
+Start: `OFFICE_MODE=demo HOST=127.0.0.1 PORT=4399 npm start` after building. No login; deterministic demo data in `src/pipeline.ts` / `server/office-state.ts`. The native-avatar test uses an intercepted snapshot in `tests/browser/pipeline.spec.ts`. Live appearance depends on configured Paperclip identities and avatar availability. The mobile office retains its existing horizontal floor scrolling. Gate roles remain the existing three supported specialists plus human merge; the renderer uses data-driven numbering and wrapping cards.

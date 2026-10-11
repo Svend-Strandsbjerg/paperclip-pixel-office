@@ -1,6 +1,6 @@
 export const STAGES = ['developer', 'browser-qa', 'reviewer'] as const
 export type Stage = typeof STAGES[number]
-export type GateState = 'waiting' | 'active' | 'valid' | 'invalidated' | 'rework' | 'unknown'
+export type GateState = 'waiting' | 'active' | 'valid' | 'invalidated' | 'rework' | 'blocked' | 'unknown'
 export type Gate = { role: Stage; state: GateState; task?: string; sha?: string }
 export type PullRequest = { repository: string; number: number; url: string; branch: string; base: string; head: string; state: 'open' | 'closed' | 'merged' }
 export type Delivery = { issue: string; title: string; status: string; gates: Gate[]; pr?: PullRequest; merge: 'waiting' | 'ready' | 'merged'; notice: string }

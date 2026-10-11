@@ -160,3 +160,10 @@ test('network/invalid responses back off, recover, and bound hostile retry signa
   now+=3_600_000-1;await github(pr);assert.equal(calls,3)
   now++;assert.equal((await github(pr))?.head,A);assert.equal(calls,4)
 })
+
+test('blocked specialist stays blocked through projection without qualifying human merge', () => {
+  const d = result(children.slice(0, 2).map((c, i) => i === 1 ? { ...c, status: 'blocked' } : c))
+  assert.equal(d.gates[1].state, 'blocked')
+  assert.equal(d.merge, 'waiting')
+  assert.equal(parseDeliveries([d])?.[0].gates[1].state, 'blocked')
+})

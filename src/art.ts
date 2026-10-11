@@ -95,26 +95,34 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     box(x - 3, y - 2, 7, 8, '#f6ecda', 2)
     oval(x, y - 1, 2, 1, '#937964')
   }
-  box(0, 0, layout.width, layout.height, '#35494c', 0)
+  box(0, 0, layout.width, layout.height, '#b6ccc9', 0)
   for (const m of layout.modules) {
     const y = m.y, v = studioVariant(m.index)
     box(m.x, y + 3, m.width, m.height, '#152f3338', 14)
-    box(m.x, y, m.width, m.height, '#e3d7c2', 12)
+    box(m.x, y, m.width, m.height, '#eee5d3', 12)
     // Quiet oak flooring; staggered joins suggest material without a busy grid.
     for (let row = 0; row < 17; row++) {
       const fy = y + 9 + row * 24
       box(20, fy, 600, .6, '#a8947628', 0)
       for (let x = 30 + (row % 3) * 58; x < 620; x += 174) box(x, fy, .6, 23, '#a894761c', 0)
     }
-    box(24, y + 5, 396, 29, '#526f7130', 5)
-    box(28, y + 4, 388, 24, '#b9d5d3', 4)
-    box(30, y + 5, 384, 9, '#d6e7df', 3)
-    for (const x of [32, 160, 288, 412]) box(x, y + 4, 3, 24, '#f1f0e2', 0)
-    box(26, y + 28, 392, 4, '#f4e9d3', 2)
-    // Broad daylight is baked once, below every desk and avatar, without filters.
-    const daylight = ctx.createLinearGradient(0, y + 30, 0, y + 225)
-    daylight.addColorStop(0, '#fff6d75c'); daylight.addColorStop(1, '#fff6d700')
-    ctx.fillStyle = daylight; ctx.fillRect(24, y + 32, 396, 193)
+    // Continuous clerestory glazing opens the full studio to sky and distant trees.
+    box(24, y + 4, 584, 44, '#8faeaf', 5)
+    box(27, y + 6, 578, 38, '#c5e4ec', 3)
+    box(27, y + 28, 578, 16, '#ddebdc', 0)
+    for (const x of [62, 214, 378, 550]) {
+      oval(x, y + 36, 27, 7, '#b5cec0')
+      box(x + 16, y + 12, 42, 3, '#f5fbfa', 2)
+    }
+    for (const x of [27, 171, 315, 459, 602]) box(x, y + 5, 3, 39, '#f8faf1', 0)
+    box(24, y + 44, 584, 4, '#fff9e9', 2)
+    // Broad daylight is cached below every desk, label and avatar.
+    const daylight = ctx.createLinearGradient(0, y + 48, 0, y + 255)
+    daylight.addColorStop(0, '#fffbea88'); daylight.addColorStop(1, '#fffbea00')
+    ctx.fillStyle = daylight; ctx.fillRect(24, y + 48, 584, 207)
+    // Open glass edge, outside circulation and all activity destinations.
+    box(614, y + 55, 5, 322, '#b9d9d466', 2)
+    box(616, y + 55, 1, 322, '#f8fffa', 0)
     const bounds = sharedDecorBounds(m.index)
     ctx.save(); ctx.beginPath(); ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height); ctx.clip()
     // Glass has a floor shadow, pale reflection and slim metal posts.

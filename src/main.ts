@@ -79,6 +79,7 @@ function showSnapshot(snapshot: unknown, agents?: RosterAgent[]) {
   root.querySelector('.office-count strong')!.textContent = String(state.length).padStart(2, '0')
   root.querySelector('#team-title span')!.textContent = String(state.length)
   root.querySelector('canvas')!.setAttribute('aria-label', `Pixel office with ${state.length} agents at their desks`)
+  return state
 }
 let isDemo = false
 function showDemo(mode: DemoMode) {
@@ -105,7 +106,6 @@ const pipeline = root.querySelector<HTMLElement>('.pipeline-panel')!
 renderPipeline(pipeline, null)
 let hasState = false
 const stopPolling = pollOffice(data => {
-  renderPipeline(pipeline, data.deliveries)
   hasState = true
   isDemo = data.mode === 'demo'
   controls.hidden = !isDemo
@@ -113,7 +113,8 @@ const stopPolling = pollOffice(data => {
   root.querySelector('.demo-note p')!.textContent = isDemo ? 'Deterministic local demonstration. No live activity is shown.' : 'Read-only Paperclip activity. Updates automatically.'
   root.querySelector('.demo-bar p')!.textContent = isDemo ? 'See the office change pace.' : 'Live agent activity'
   identities = data.identities
-  showSnapshot(data.snapshot, data.agents)
+  const state = showSnapshot(data.snapshot, data.agents)
+  renderPipeline(pipeline, data.deliveries, state)
 }, () => {
   renderPipeline(pipeline, null)
   root.querySelector('.source')!.textContent = 'DISCONNECTED'
