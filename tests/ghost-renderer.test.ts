@@ -5,6 +5,8 @@ import { demoHandoff } from '../src/handoff.ts'
 import { mapVisualState } from '../src/state.ts'
 
 test('renderer floats idle/working native ghosts, glides handoffs, settles, and respects reduced motion', t => {
+  let onResize: () => void
+  let disconnected = false
   let callback: FrameRequestCallback
   let now = 0
   let allocations = 0
@@ -23,6 +25,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     drawImage: (image: unknown) => { if (image instanceof Image) images.push(image) },
   }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} })
   const globals: Record<string, unknown> = {
+    ResizeObserver: class { constructor(callback: () => void) { onResize = callback } observe() {} disconnect() { disconnected = true } },
     window: { devicePixelRatio: 2, matchMedia: () => media, addEventListener() {}, removeEventListener() {} },
     document: { hidden: false, createElement: (tag: string) => tag === 'canvas' ? { getContext: () => ctx } : bubble, addEventListener() {}, removeEventListener() {} },
     requestAnimationFrame: (next: FrameRequestCallback) => { callback = next; return 1 },
@@ -37,15 +40,15 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     t.after(() => previous ? Object.defineProperty(globalThis, key, previous) : Reflect.deleteProperty(globalThis, key))
   }
   t.mock.method(performance, 'now', () => now)
-  const canvas = { width: 0, height: 0, dataset: {} as Record<string, string>, parentElement: { parentElement: { before(node: unknown) { assert.equal(node, bubble) } }, style: {} }, getContext: () => ctx }
+  const canvas = { width: 0, height: 0, dataset: {} as Record<string, string>, parentElement: { parentElement: { clientWidth: 1000, before(node: unknown) { assert.equal(node, bubble) } }, style: {} as Record<string, string> }, getContext: () => ctx }
   const state = mapVisualState({ developer: 'working' })
   office = mountOffice(canvas as unknown as HTMLCanvasElement, state)
   function frame(time: number) {
     now = time; rotations.length = 0; translations.length = 0; images.length = 0; documents.length = 0; activityGraphics.length = 0
     callback!(time)
   }
-  assert.equal(canvas.width, 1280)
-  assert.equal(canvas.height, 896)
+  assert.equal(canvas.width, 1728)
+  assert.equal(canvas.height, 1210)
   const painted = environmentPaints
   office.setState(state)
   assert.equal(environmentPaints, painted)
@@ -123,5 +126,19 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   office.handoff(demoHandoff)
   frame(now + 16)
   assert.ok(Math.hypot(translations[0][0] - wandering[0], translations[0][1] - wandering[1]) < 3)
-
+  // Container-only resizing and monitor DPI changes both rebuild the backing store.
+  canvas.parentElement.parentElement.clientWidth = 350
+  onResize!()
+  assert.equal(canvas.width, 1472)
+  assert.equal(canvas.parentElement.style.width, '736px')
+  window.devicePixelRatio = 3
+  frame(now + 16)
+  assert.equal(canvas.width, 2208)
+  assert.equal(canvas.height, Math.ceil(448 * 1.15 * 3))
+  office.setState([...state, { ...state[1], id: 'second-room', col: 6, row: 34 }])
+  assert.equal(canvas.width, 2208)
+  assert.equal(canvas.height, Math.ceil(896 * 1.15 * 3))
+  office.destroy()
+  office = undefined
+  assert.equal(disconnected, true)
 })

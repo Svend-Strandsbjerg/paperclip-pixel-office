@@ -5,6 +5,7 @@ import { ghostMotion } from './ghost-motion'
 import { paintWorkActivity, workActivities } from './work-activities'
 import type { VisualState } from './state'
 import { sceneSize } from './scene'
+import { studioViewport } from './studio-viewport'
 import { officeActivities, paintCarriedItem } from './office-activities'
 import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 
@@ -22,7 +23,10 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   ambient.sync(state)
   ghosts.sync(state.map(agent => agent.id))
   const background = document.createElement('canvas')
+  const scene = canvas.parentElement!
+  const viewport = scene.parentElement!
   let pixelRatio = 1
+  let renderScale = 1
   let geometry = ''
   let handoffOrigin = { x: 0, y: 0 }
   let active: { event: Handoff; seconds: number } | undefined
@@ -62,26 +66,32 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   function resize() {
     const size = sceneSize(state)
     pixelRatio = Math.max(1, window.devicePixelRatio || 1)
-    const key = `${size.width}:${size.height}:${pixelRatio}:${state.map(a => `${a.col},${a.row}`).join(';')}`
-    canvas.parentElement!.style.width = `${size.width}px`
+    const display = studioViewport(size, viewport.clientWidth, pixelRatio)
+    renderScale = display.scale * pixelRatio
+    const key = `${display.width}:${display.height}:${pixelRatio}:${state.map(a => `${a.col},${a.row}`).join(';')}`
+    scene.style.width = `${display.width}px`
+    scene.style.height = `${display.height}px`
     if (key !== geometry) {
       geometry = key
-      canvas.width = Math.ceil(size.width * pixelRatio)
-      canvas.height = Math.ceil(size.height * pixelRatio)
+      canvas.width = display.bufferWidth
+      canvas.height = display.bufferHeight
       background.width = canvas.width; background.height = canvas.height
       const staticContext = background.getContext('2d')!
-      staticContext.scale(pixelRatio / 3, pixelRatio / 3)
+      staticContext.scale(renderScale / 3, renderScale / 3)
       paintStudio(staticContext, state)
     }
   }
   resize()
   window.addEventListener('resize', resize)
+  const observer = new ResizeObserver(resize)
+  observer.observe(viewport)
   const stop = startGameLoop(canvas, {
     update: dt => { frameDelta = dt; elapsed += dt; updateHandoff() },
     render: ctx => {
+      if (pixelRatio !== Math.max(1, window.devicePixelRatio || 1)) resize()
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.drawImage(background, 0, 0)
-      ctx.save(); ctx.scale(pixelRatio / 3, pixelRatio / 3)
+      ctx.save(); ctx.scale(renderScale / 3, renderScale / 3)
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
       const travel = active && !motion.matches ? travelPose(active.event, active.seconds) : undefined
@@ -126,5 +136,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       ctx.restore()
     },
   })
-  return { setState: (next: VisualState) => { state = next; activities.sync(state); excursions.sync(state); ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
+  return { setState: (next: VisualState) => { state = next; activities.sync(state); excursions.sync(state); ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); observer.disconnect(); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }

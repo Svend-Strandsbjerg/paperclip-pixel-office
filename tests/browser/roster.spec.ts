@@ -34,7 +34,7 @@ test('dynamic polling preserves specialist handoffs and pipeline on a narrow red
   agents = [...agents, ...Array.from({ length: 35 }, (_, i) => agent(`generic-${i}`))]
   await expect(page.locator('.roster li')).toHaveCount(40)
   expect(Number(await page.locator('canvas').getAttribute('height'))).toBeGreaterThan(Number(initialHeight))
-  expect(await page.locator('canvas').evaluate(c => c.getBoundingClientRect().width)).toBe(640)
+  expect(await page.locator('canvas').evaluate(c => c.getBoundingClientRect().width)).toBe(736)
   const scene = (await page.locator('.scene').boundingBox())!
   for (const label of await page.locator('.desk-label').all()) {
     const box = (await label.boundingBox())!
