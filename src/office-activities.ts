@@ -4,9 +4,10 @@ import { activityAnchor, MODULE_HEIGHT } from './layout'
 import type { VisualState } from './state'
 
 type Point = { x: number; y: number }
-type Trip = { kind: 'coffee' | 'work'; points: Point[]; distance: number; length: number; pause: number; returning: boolean; returnSpeed?: number }
-type Entry = { home: Point; coffee: Point; activity: string; module: number; wait: number; trip?: Trip }
-export type OfficeActivity = Point & { dx: number; dy: number; phase: 'desk' | 'outbound' | 'pause' | 'returning'; prop?: 'cup' | 'paper'; working: boolean }
+export type IdleBehaviour = 'local_idle' | 'coffee' | 'lounge' | 'wander' | 'social'
+type Trip = { kind: IdleBehaviour; points: Point[]; distance: number; length: number; pause: number; dwell: number; returning: boolean; returnSpeed?: number }
+type Entry = { home: Point; coffee: Point; activity: string; module: number; wait: number; cycle: number; lastKind?: IdleBehaviour; trip?: Trip }
+export type OfficeActivity = Point & { dx: number; dy: number; phase: 'desk' | 'outbound' | 'pause' | 'returning'; prop?: 'cup' | 'paper'; working: boolean; behaviour?: IdleBehaviour }
 const length = (points: Point[]) => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0)
 function position(points: Point[], distance: number): Point {
   for (let i = 1; i < points.length; i++) {
@@ -29,7 +30,7 @@ function coffeeAnchor(home: Point, id: string): Point {
   return { x: x + Math.sin(phase) * 3, y: module * MODULE_HEIGHT + y + Math.cos(phase) * 3 }
 }
 
-/** Shared-clock state machine. Persistent independent coffee visits, identity-staggered
+/** Shared-clock state machine. Finite independent idle visits, identity-staggered
  * departures, and retraced paths on activity changes. No provider mutations. */
 export function officeActivities() {
   const entries = new Map<string, Entry>()
@@ -41,11 +42,11 @@ export function officeActivities() {
       for (const agent of state) {
         const home = activityAnchor(agent), previous = entries.get(agent.id)
         if (!previous || previous.home.x !== home.x || previous.home.y !== home.y) {
-          entries.set(agent.id, { home, coffee: coffeeAnchor(home, agent.id), module: Math.floor(home.y / MODULE_HEIGHT), activity: agent.activity, wait: delay(agent.id) })
+          entries.set(agent.id, { home, coffee: coffeeAnchor(home, agent.id), module: Math.floor(home.y / MODULE_HEIGHT), activity: agent.activity, wait: delay(agent.id), cycle: 0 })
         } else if (previous.activity !== agent.activity) {
           previous.activity = agent.activity
           previous.wait = delay(agent.id)
-          if (previous.trip) previous.trip.returning = true
+          if (previous.trip) { previous.trip.returning = true; previous.trip.returnSpeed = Math.max(42, previous.trip.distance / WALK_SECONDS) }
         }
       }
     },
@@ -66,24 +67,35 @@ export function officeActivities() {
       }
       if (!e.trip) {
         e.wait -= delta
-        // Seated coffee visitors do not reserve the studio's travel/work slot.
-        if (e.wait > 0 || [...entries.values()].some(other => other.module === e.module && other.trip &&
-          (other.trip.kind === 'work' || other.trip.returning || other.trip.distance < other.trip.length))) return desk
+        if (e.wait > 0 || e.activity !== 'idle') return desk
         const y = e.module * MODULE_HEIGHT
-        const kind = e.activity === 'idle' ? 'coffee' : 'work'
-        const points = [e.home, { x: 400, y: e.home.y }, { x: 400, y: y + 184 }, { x: 445, y: y + 184 },
-          ...(kind === 'work' ? [{ x: 525, y: y + 184 }] : [{ x: 445, y: e.coffee.y }, e.coffee])]
-        e.trip = { kind, points, length: length(points), distance: 0, pause: 0, returning: false }
+        // Avalanche the stable identity/cycle hash so adjacent cycles are unrelated.
+        let seed = Math.floor(hoverProfile(`${id}:${e.cycle++}`).phase / (Math.PI * 2) * 0x100000000)
+        seed = Math.imul(seed ^ seed >>> 16, 0x7feb352d)
+        seed = Math.imul(seed ^ seed >>> 15, 0x846ca68b)
+        const decision = ((seed ^ seed >>> 16) >>> 0) / 0x100000000
+        const kinds: IdleBehaviour[] = ['local_idle', 'coffee', 'lounge', 'wander', 'social']
+        let kind = kinds[Math.floor(decision * kinds.length)]
+        if (kind === e.lastKind || (['coffee', 'social'].includes(kind) && ['coffee', 'social'].includes(e.lastKind ?? ''))) kind = kinds[(kinds.indexOf(kind) + 1) % kinds.length]
+        e.lastKind = kind
+        // Existing clear circulation lanes; local pauses never cross desk furniture.
+        const destination = kind === 'wander' ? { x: 400, y: y + 70 + decision * 18 }
+          : kind === 'local_idle' ? { x: e.home.x + 18, y: e.home.y + 4 }
+          : kind === 'lounge' ? { x: e.coffee.x, y: e.coffee.y + 32 } : e.coffee
+        const points = kind === 'local_idle' ? [e.home, destination]
+          : kind === 'wander' ? [e.home, { x: 400, y: e.home.y }, destination]
+          : [e.home, { x: 400, y: e.home.y }, { x: 400, y: y + 184 }, { x: 445, y: y + 184 }, { x: 445, y: destination.y }, destination]
+        e.trip = { kind, points, length: length(points), distance: 0, pause: 0, dwell: 14 + decision * 24, returning: false }
       }
       const trip = e.trip, before = position(trip.points, trip.distance)
       if (trip.returning) trip.distance = Math.max(0, trip.distance - delta * (trip.returnSpeed ?? 42))
       else if (trip.distance < trip.length) trip.distance = Math.min(trip.length, trip.distance + delta * 42)
-      else { trip.pause = Math.min(5, trip.pause + delta); if (trip.kind === 'work' && trip.pause >= 5) trip.returning = true }
+      else { trip.pause += delta; if (trip.pause >= trip.dwell) trip.returning = true }
       const current = position(trip.points, trip.distance)
       const phase = trip.returning ? 'returning' : trip.distance === trip.length ? 'pause' : 'outbound'
-      const prop = trip.kind === 'coffee' ? (e.activity === 'idle' && trip.pause > 0.5 ? 'cup' : undefined) : (e.activity === 'working' ? 'paper' : undefined)
-      if (trip.returning && trip.distance === 0) { e.trip = undefined; e.wait = 60 + delay(id); return desk }
-      return { ...current, dx: current.x - before.x, dy: current.y - before.y, phase, prop: interrupted ? undefined : prop, working: e.activity === 'working' }
+      const prop = trip.kind === 'coffee' && e.activity === 'idle' && !trip.returning && trip.pause > 0.5 ? 'cup' : undefined
+      if (trip.returning && trip.distance === 0) { e.trip = undefined; e.wait = 8 + delay(`${id}:${e.cycle}`); return desk }
+      return { ...current, dx: current.x - before.x, dy: current.y - before.y, phase, behaviour: trip.kind, prop: interrupted ? undefined : prop, working: e.activity === 'working' }
     },
   }
 }

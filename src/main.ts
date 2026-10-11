@@ -1,3 +1,4 @@
+import { ACTIVITY_PRESENTATION, selectActivity, type ActivityProfile } from './work-activities'
 import { paintPortrait, agentAccent } from './art'
 import { appearanceLabel, type Identity } from './identity'
 import type { RoleId, RosterAgent } from './state'
@@ -28,7 +29,7 @@ root.innerHTML = `
 root.querySelector('.license')!.textContent = license
 const labels = root.querySelector<HTMLDivElement>('.labels')!
 const roster = root.querySelector<HTMLUListElement>('.roster')!
-const office = mountOffice(root.querySelector('.scene canvas')!, [])
+const office = mountOffice(root.querySelector('.scene canvas')!, [], updateActivity)
 const layout = rosterLayout()
 let identities: Partial<Record<RoleId, Identity>> | undefined
 const cards = new Map<string, { card: HTMLLIElement; label: HTMLDivElement }>()
@@ -65,11 +66,12 @@ function showSnapshot(snapshot: unknown, agents?: RosterAgent[]) {
     card.querySelector('.appearance-label')!.textContent = isDemo ? 'Local demo appearance' : card.title
     paintPortrait(card.querySelector<HTMLImageElement>('.portrait')!, agent)
     for (const element of [card, label]) {
+      if (agent.activity !== 'working') delete element.dataset.profile
       element.dataset.role = agent.specialist ?? agent.id
       element.dataset.agentId = agent.id
       element.style.setProperty('--role-color', agentAccent(agent))
       element.dataset.activity = agent.activity
-      element.querySelector('.activity')!.textContent = agent.activity === 'working' ? 'Working' : agent.status ?? 'Idle'
+      element.querySelector('.activity')!.textContent = agent.activity === 'working' ? activityLabel((element.dataset.profile as ActivityProfile | undefined) ?? selectActivity(agent.id)) : agent.status ?? 'Idle'
     }
   }
   const working = state.filter(agent => agent.activity === 'working').length
@@ -115,3 +117,16 @@ const stopPolling = pollOffice(data => {
   root.querySelector('.demo-note p')!.textContent = hasState ? 'Connection lost. Showing the last received activity and appearance.' : 'Office state unavailable. No live activity has been received.'
 }, event => office.handoff(event))
 if (import.meta.hot) import.meta.hot.dispose(() => { stopPolling(); office.destroy() })
+
+function activityLabel(profile: ActivityProfile) {
+  const presentation = ACTIVITY_PRESENTATION[profile]
+  return `${presentation.icon} ${presentation.label}`
+}
+function updateActivity(id: string, profile: ActivityProfile) {
+  const elements = cards.get(id)
+  if (!elements) return
+  for (const element of [elements.card, elements.label]) {
+    element.dataset.profile = profile
+    element.querySelector('.activity')!.textContent = activityLabel(profile)
+  }
+}

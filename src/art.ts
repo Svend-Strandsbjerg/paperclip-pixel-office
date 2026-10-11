@@ -53,7 +53,7 @@ function lightingFor(image: HTMLImageElement) {
   ghostLighting.set(image, layer)
   return layer
 }
-export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x: number, y: number, pose: GhostPose = FRONT) {
+export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x: number, y: number, pose: GhostPose = FRONT, accessory?: 'glasses' | 'headset') {
   // Concentric translucent ellipses soften the contact without per-frame blur.
   for (const [width, height, color] of contactShadows) {
     ctx.fillStyle = color
@@ -81,6 +81,19 @@ export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x:
     ctx.fillStyle = '#283c43'
     ctx.fillRect((x - 4) * 3, (y - 13) * 3, 6, 9)
     ctx.fillRect((x + 2) * 3, (y - 13) * 3, 6, 9)
+  }
+  // Temporary overlays share the avatar pose; cached identity artwork is untouched.
+  ctx.strokeStyle = '#344c60'; ctx.lineWidth = 3
+  if (accessory === 'glasses') {
+    ctx.strokeRect((x - 9) * 3, (y - 16) * 3, 21, 15)
+    ctx.strokeRect((x + 2) * 3, (y - 16) * 3, 21, 15)
+    ctx.fillStyle = '#344c60'; ctx.fillRect((x - 2) * 3, (y - 14) * 3, 12, 3)
+  } else if (accessory === 'headset') {
+    ctx.beginPath(); ctx.arc(x * 3, (y - 13) * 3, 36, Math.PI, 0); ctx.stroke()
+    ctx.fillStyle = '#344c60'
+    ctx.fillRect((x - 13) * 3, (y - 15) * 3, 9, 21)
+    ctx.fillRect((x + 10) * 3, (y - 15) * 3, 9, 21)
+    ctx.fillRect((x + 6) * 3, (y - 7) * 3, 18, 3)
   }
   ctx.restore()
 }

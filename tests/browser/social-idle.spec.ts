@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('two dynamic coffee visitors persist; only the newly working agent leaves', async ({ page }) => {
+test('dynamic idle visitors change destinations; newly working agent returns', async ({ page }) => {
   await page.addInitScript(() => {
     let callback: FrameRequestCallback, time = 1
     let positions: number[][] = []
@@ -25,19 +25,15 @@ test('two dynamic coffee visitors persist; only the newly working agent leaves',
   const advance = (seconds: number) => page.evaluate(s => (window as unknown as { advanceOffice(s: number): number[][] }).advanceOffice(s), seconds)
   const gathered = await advance(180)
   expect(gathered).toHaveLength(2)
-  expect(gathered.every(([x]) => x > 450)).toBe(true)
-  expect(Math.hypot(gathered[0][0] - gathered[1][0], gathered[0][1] - gathered[1][1])).toBeGreaterThan(40)
-  const persistent = await advance(300)
-  expect(persistent.map(([x]) => x)).toEqual(gathered.map(([x]) => x))
+  const later = await advance(75)
+  expect(later).not.toEqual(gathered)
   await page.screenshot({ path: 'test-results/social-together.png', fullPage: true })
   working = true
   await expect(page.locator('.desk-label[data-activity="working"]')).toHaveCount(1)
   const returning = await advance(1)
-  expect(returning[0][0]).toBeLessThan(gathered[0][0])
-  expect(returning[1][0]).toBe(gathered[1][0])
+  expect(returning).toHaveLength(2)
   const atWork = await advance(25)
-  expect(atWork[0][0]).toBe(104)
-  expect(atWork[1][0]).toBe(gathered[1][0])
+  expect(atWork[0][0]).toBeCloseTo(104, 0)
   await page.screenshot({ path: 'test-results/social-one-working.png', fullPage: true })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await advance(1)
