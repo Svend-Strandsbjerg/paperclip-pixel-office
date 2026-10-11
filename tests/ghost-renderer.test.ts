@@ -14,6 +14,8 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   let now = 0
   let allocations = 0
   let environmentPaints = 0
+  let canvasAllocations = 0
+  let lightingPaints = 0
   const rotations: number[] = [], translations: number[][] = [], images: unknown[] = []
   const documents: number[][] = []
   const activityGraphics: number[][] = []
@@ -31,7 +33,14 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   const globals: Record<string, unknown> = {
     ResizeObserver: class { constructor(callback: () => void) { onResize = callback } observe() {} disconnect() { disconnected = true } },
     window: { devicePixelRatio: 2, matchMedia: () => media, addEventListener() {}, removeEventListener() {} },
-    document: { hidden: false, createElement: (tag: string) => tag === 'canvas' ? background : bubble, addEventListener() {}, removeEventListener() {} },
+    document: { hidden: false, createElement: (tag: string) => {
+      if (tag !== 'canvas') return bubble
+      if (canvasAllocations++ === 0) return background
+      return { width: 0, height: 0, getContext: () => new Proxy({
+        drawImage: () => { lightingPaints++ },
+        createLinearGradient: () => ({ addColorStop() {} }),
+      }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} }) }
+    }, addEventListener() {}, removeEventListener() {} },
     requestAnimationFrame: (next: FrameRequestCallback) => { callback = next; return 1 },
     cancelAnimationFrame() {},
     Image: class { complete = true; naturalWidth = 64; src = ''; constructor() { allocations++ } },
@@ -66,6 +75,8 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   assert.notDeepEqual(translations[2], first[2]) // working
   assert.deepEqual(images, originalImages)
   assert.equal(allocations, 1) // cached shared demo image
+  assert.equal(canvasAllocations, 2) // background plus shared lighting mask
+  assert.equal(lightingPaints, 1)
   assert.equal(environmentPaints, painted)
   office.handoff(demoHandoff)
   frame(33)
@@ -163,6 +174,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   frame(now + 16)
   frame(now + 16)
   assert.equal(environmentPaints, cappedPaints) // requested DPR must not trigger repeated allocation
+  assert.equal(lightingPaints, 1) // motion, resize and roster growth reuse the mask
   office.destroy()
   office = undefined
   assert.equal(disconnected, true)

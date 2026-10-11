@@ -31,9 +31,34 @@ export function ghostImage(agent: VisualAgent, now = Date.now()) {
   }
   return entry.image.complete && entry.image.naturalWidth > 0 ? entry.image : undefined
 }
+// Lighting is alpha-masked to the actual native silhouette, once per loaded asset.
+// Weak keys allow replaced/retried images and their small lighting surfaces to retire.
+const contactShadows = [[29, 8, '#263d4309'], [25, 6, '#263d4312'], [20, 4, '#263d4324']] as const
+const ghostLighting = new WeakMap<HTMLImageElement, HTMLCanvasElement>()
+function lightingFor(image: HTMLImageElement) {
+  let layer = ghostLighting.get(image)
+  if (layer) return layer
+  layer = document.createElement('canvas')
+  layer.width = layer.height = 192
+  const light = layer.getContext('2d')!
+  light.drawImage(image, 0, 0, 192, 192)
+  light.globalCompositeOperation = 'source-in'
+  const volume = light.createLinearGradient(35, 40, 153, 135)
+  volume.addColorStop(0, '#ffffff55')
+  volume.addColorStop(.35, '#ffffff00')
+  volume.addColorStop(.65, '#243d4900')
+  volume.addColorStop(1, '#243d493d')
+  light.fillStyle = volume
+  light.fillRect(0, 0, 192, 192)
+  ghostLighting.set(image, layer)
+  return layer
+}
 export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x: number, y: number, pose: GhostPose = FRONT) {
-  ctx.fillStyle = '#263d4366'
-  ctx.beginPath(); ctx.ellipse(x * 3, (y + 8) * 3, 21, 5, 0, 0, Math.PI * 2); ctx.fill()
+  // Concentric translucent ellipses soften the contact without per-frame blur.
+  for (const [width, height, color] of contactShadows) {
+    ctx.fillStyle = color
+    ctx.beginPath(); ctx.ellipse(x * 3, (y + 8) * 3, width, height, 0, 0, Math.PI * 2); ctx.fill()
+  }
   // Ground shadow stays anchored. Transform the original image around its center;
   // never mirror its asymmetric identity or introduce body/stepping frames.
   ctx.save()
@@ -43,7 +68,10 @@ export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x:
   ctx.transform(1 - Math.abs(pose.turn) * 0.045, 0, pose.turn * 0.055, 1 + pose.pitch * 0.035, 0, pose.pitch * 1.5)
   ctx.translate(-cx, -cy)
   const image = ghostImage(agent)
-  if (image) ctx.drawImage(image, (x - 16) * 3, (y - 26) * 3, 96, 96)
+  if (image) {
+    ctx.drawImage(image, (x - 16) * 3, (y - 26) * 3, 96, 96)
+    ctx.drawImage(lightingFor(image), (x - 16) * 3, (y - 26) * 3, 96, 96)
+  }
   else {
     ctx.fillStyle = '#c6ced4'
     ctx.beginPath(); ctx.arc(x * 3, (y - 12) * 3, 24, Math.PI, 0)
@@ -116,6 +144,12 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     }
     for (const x of [27, 171, 315, 459, 602]) box(x, y + 5, 3, 39, '#f8faf1', 0)
     box(24, y + 44, 584, 4, '#fff9e9', 2)
+    // Window-sill greenery adds life to each workspace without entering its aisles.
+    for (const x of [48, 196, 402]) {
+      box(x - 13, y + 38, 26, 8, '#e0d1b8', 3)
+      for (const dx of [-7, 0, 7]) oval(x + dx, y + 35, 5, 7, dx ? '#91a58a' : '#6e8b79', dx / 10)
+      box(x - 12, y + 40, 24, 1, '#faf1df', 1)
+    }
     // Broad daylight is cached below every desk, label and avatar.
     const daylight = ctx.createLinearGradient(0, y + 48, 0, y + 255)
     daylight.addColorStop(0, '#fffbea88'); daylight.addColorStop(1, '#fffbea00')
@@ -127,8 +161,8 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     ctx.save(); ctx.beginPath(); ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height); ctx.clip()
     // Glass has a floor shadow, pale reflection and slim metal posts.
     box(434, y + 47, 7, 318, '#596f6815', 3)
-    box(432, y + 42, 3, 112, '#90b0aa77', 1)
-    box(432, y + 202, 3, 152, '#90b0aa77', 1)
+    box(432, y + 42, 3, 112, '#accbc34d', 1)
+    box(432, y + 202, 3, 152, '#accbc34d', 1)
     box(433, y + 46, 1, 108, '#f6fff6bb', 0)
     box(433, y + 202, 1, 138, '#f6fff6bb', 0)
     for (const dy of [44, 154, 202, 350]) box(432, y + dy, 4, 5, '#758a83', 1)
@@ -154,6 +188,11 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     box(517, y + 119, 18, 13, '#71878a', 2)
     box(519, y + 120, 14, 10, '#c8d7d2', 1)
     mug(547, y + 123)
+    // Generic planning marks and a board tray; no live project information.
+    box(475, y + 76, 42, 1, '#a6b8b0', 0)
+    box(475, y + 80, 27, 1, '#b8c6ba', 0)
+    box(552, y + 85, 26, 2, '#879d94', 1)
+    box(560, y + 83, 9, 2, v.accent, 1)
     // Coffee and metal shelving form a smaller material zone between the rugs.
     box(454, y + 187, 145, 48, '#b5b8aa', 5)
     box(458, y + 190, 137, 8, v.wood, 2)
@@ -165,6 +204,10 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     box(569, y + 183, 6, 7, '#eee4cf', 1)
     mug(548, y + 185)
     plant(472, y + 184, v.leaf, .48)
+    box(506, y + 182, 20, 9, '#d8c8aa', 2)
+    for (const x of [510, 516, 522]) box(x, y + 180, 3, 7, '#f6eddb', 1)
+    box(550, y + 220, 24, 9, '#d7d6c4', 2)
+    box(558, y + 223, 8, 2, '#98a69a', 1)
     // Informal lounge: asymmetric upholstery, woven rug and a warm reading lamp.
     box(449, y + 246, 155, 133, v.rug, v.roundedRug ? 36 : 12)
     for (let line = 0; line < 4; line++) box(465, y + 357 + line * 3, 82, 1, '#f6f0df44', 0)
@@ -181,6 +224,7 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     mug(539, y + 323)
     plant(v.plantSide, y + 351, v.leaf, .9)
     const lx = v.plantSide === 590 ? 466 : 586
+    oval(lx, y + 312, 22, 12, '#f9e7bd25')
     oval(lx, y + 305, 16, 6, '#f9e7bd44')
     box(lx - 1, y + 293, 2, 30, '#8b8d79', 1)
     oval(lx, y + 324, 7, 3, '#9e9e88')
@@ -194,6 +238,8 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     const pad = workspacePad(a), desk = deskBounds(a)
     // Low-contrast textiles behind ghosts; all solid props remain on desktops.
     box(pad.x + (a.col % 2 ? 4 : 0), pad.y, pad.width - 4, pad.height, v.rug + '88', v.roundedRug ? 24 : 10)
+    // Grounding stays visible above the rug and below the desktop.
+    oval(x + 2, desk.y + desk.height, 38, 5, '#554a3814')
     box(desk.x, desk.y + 3, desk.width, desk.height - 3, '#927357', 6)
     box(desk.x, desk.y, desk.width, desk.height - 3, v.wood, 6)
     box(desk.x + 5, desk.y + 3, desk.width - 10, 1, '#f4debd66', 0)
@@ -201,10 +247,31 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     box(x - 15, y - 16, 30, 11, '#bfd8d5', 2)
     box(x - 12, y - 14, 19, 2, '#e6ece0', 1)
     box(x - 6, y - 2, 12, 2, '#71827d', 1)
+    // A compact task lamp and stationery make every occupied desk feel personal.
+    oval(x - 28, y - 4, 6, 2, '#687c742b')
+    box(x - 29, y - 17, 2, 12, '#7f8e80', 1)
+    box(x - 33, y - 19, 11, 5, '#e9d9b3', 2)
+    box(x + 6, y + 1, 16, 6, '#eee6d5', 1)
+    box(x + 8, y + 3, 10, 1, '#b1b9aa', 0)
     if ((a.row + a.col) % 3 === 0) {
       box(x + 23, y - 18, 10, 13, v.accent, 2)
       box(x + 25, y - 17, 1, 11, '#f3e6c9', 0)
     } else mug(x + 27, y - 16)
+  }
+  // Standing west-edge props must cover every occupied workspace rug.
+  for (const m of layout.modules) {
+    const y = m.y, v = studioVariant(m.index)
+    // Slim storage and framed art on the west edge, clear of every reserved seat
+    // and of the existing handoff/coffee lanes, including future six-seat modules.
+    box(28, y + 177, 27, 27, '#aa987e', 3)
+    box(30, y + 179, 23, 23, '#f5edda', 2)
+    oval(39, y + 187, 5, 5, v.accent)
+    box(33, y + 194, 17, 5, '#aebba4', 2)
+    box(29, y + 219, 27, 27, '#546d6020', 4)
+    box(27, y + 215, 27, 27, v.wood, 3)
+    box(29, y + 218, 23, 17, '#8c7964', 1)
+    for (let b = 0; b < 4; b++) box(31 + b * 5, y + 221 + b % 2 * 3, 4, 13 - b % 2 * 3, b % 2 ? v.accent : '#d4d6b9', 1)
+    plant(41, y + 353, v.leaf, .65)
   }
   ctx.restore()
 }

@@ -315,7 +315,9 @@ test('hidden polling drops handoffs; a long frame gap expires active and waiting
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
 })
 
-// Demo ghosts use the neutral #c6ced4 artwork. Read actual canvas pixels at
+// Demo ghosts use neutral #c6ced4 artwork with a subtle light/shade overlay.
+// Identify its cool gray body (including shaded edges), excluding the warm floor
+// and dark eyes. Read actual canvas pixels at
 // the orchestrator's workstation (scene 104, 148; native device pixel ratio), not desk labels
 // that remain stationary during travel. Hover may move the body vertically by 6px.
 async function orchestratorBounds(canvas: Locator) {
@@ -327,7 +329,8 @@ async function orchestratorBounds(canvas: Locator) {
     const xs: number[] = [], ys: number[] = []
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4
-      if (data[i] === 198 && data[i + 1] === 206 && data[i + 2] === 212) {
+      const r = data[i], g = data[i + 1], b = data[i + 2]
+      if (r >= 155 && r <= 225 && g - r >= 5 && b - g >= 4 && b - r <= 22) {
         xs.push((x + left) / scale); ys.push((y + top) / scale)
       }
     }

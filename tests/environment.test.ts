@@ -46,3 +46,23 @@ test('each module opens to full-width glazing and daylight without changing circ
   assert.equal(commands.filter(c => c[0] === 'roundRect' && c[3] === 584 && c[4] === 44).length, 2)
   assert.equal(commands.filter(c => c[0] === 'fillRect' && c[3] === 584 && c[4] === 207).length, 2)
 })
+
+test('occupied six-seat modules paint rugs below west props and desk grounding', () => {
+  const commands = drawing(12)
+  const index = (name: string, ...args: unknown[]) => commands.findIndex(c => c[0] === name && args.every((arg, i) => c[i + 1] === arg))
+  const rugs = commands.flatMap((c, i) => c[0] === 'roundRect' && c[3] === 156 && c[4] === 64 ? [i] : [])
+  assert.equal(rugs.length, 12)
+  for (const moduleY of [16, 464]) {
+    const shelf = index('roundRect', 27, moduleY + 215, 27, 27)
+    const art = index('roundRect', 28, moduleY + 177, 27, 27)
+    const plant = index('translate', 41, moduleY + 353)
+    for (const prop of [shelf, art, plant]) assert.ok(prop > Math.max(...rugs), 'standing props must cover all rugs')
+  }
+  for (let seat = 0; seat < 12; seat++) {
+    const col = seat % 2 ? 19 : 6
+    const row = 6 + Math.floor(seat % 6 / 2) * 8 + Math.floor(seat / 6) * 28
+    const grounding = index('ellipse', col * 16 + 10, row * 16 + 14, 38, 5)
+    const desktop = index('roundRect', col * 16 - 30, row * 16 - 12, 76, 26)
+    assert.ok(rugs[seat] < grounding && grounding < desktop, 'rug < grounding < desk')
+  }
+})

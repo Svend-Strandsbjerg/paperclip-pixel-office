@@ -57,7 +57,7 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     if (req.headers.authorization !== `Bearer ${secret}`) { res.writeHead(401); res.end('{}'); return }
     if (issuesBroken && req.url?.includes('/issues')) { res.writeHead(503); res.end('{}'); return }
     if (broken) { res.writeHead(503); res.end(JSON.stringify({ private: secret })); return }
-    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: missingAppearance ? null : { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: changedAppearance ? 'orchid-peach' : ['orchid-peach', 'tangerine-cobalt', 'solar-flare', 'violet-ember'][i] }, avatarUrl: '/api/agent-avatars/cap-v1/bubblegum-sky/rest.png?size=512&scale=1', status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning) || (id === ids.reviewer && reviewerRunning)) ? 'running' : 'active', secret })) : [
+    res.end(JSON.stringify(req.url?.includes('/agents') ? Object.values(ids).map((id, i) => ({ id, name: ['Morgan', 'Devon', 'Quinn', 'Robin'][i], role: ['ceo', 'engineer', 'qa', 'reviewer'][i], appearance: missingAppearance ? null : { schemaVersion: 1, characterVersion: 'cap-v1', paletteId: changedAppearance ? 'orchid-peach' : ['orchid-peach', 'tangerine-cobalt', 'solar-flare', 'violet-ember'][i] }, avatarUrl: missingAppearance ? undefined : `/api/agent-avatars/cap-v1/${changedAppearance ? 'orchid-peach' : ['orchid-peach', 'tangerine-cobalt', 'solar-flare', 'violet-ember'][i]}/rest.png?size=512&scale=1`, status: (id === ids.developer || (id === ids['browser-qa'] && qaRunning) || (id === ids.reviewer && reviewerRunning)) ? 'running' : 'active', secret })) : [
       { id: 'rework-parent', assigneeAgentId: ids.orchestrator },
       { id: 'rework-dev', parentId: 'rework-parent', assigneeAgentId: ids.developer, status: 'done', identifier: 'DEV-200', title: 'Implementation', createdAt: '2026-10-01', completedAt: '2026-10-02' },
       { id: 'rework-qa', parentId: 'rework-parent', assigneeAgentId: ids['browser-qa'], status: 'done', identifier: 'DEV-201', title: 'QA', createdAt: '2026-10-03', completedAt: '2026-10-04' },
@@ -100,9 +100,23 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'working')
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
-    await expect(page.locator('.identity-name')).toHaveText(['Morgan · ceo', 'Devon · engineer', 'Quinn · qa', 'Robin · reviewer'])
-    const portraits = await page.locator('.portrait').evaluateAll(images => images.map(i => (i as HTMLImageElement).src))
-    expect(new Set(portraits).size).toBe(4)
+    await expect(page.locator('.roster li')).toHaveCount(4)
+    for (const [id, name, role] of [
+      [ids.orchestrator, 'Morgan', 'ceo'],
+      [ids.developer, 'Devon', 'engineer'],
+      [ids['browser-qa'], 'Quinn', 'qa'],
+      [ids.reviewer, 'Robin', 'reviewer'],
+    ]) {
+      const card = page.locator(`.roster li[data-agent-id="${id}"]`)
+      await expect(card.locator('h3')).toHaveText(name)
+      await expect(card.locator('.identity-name')).toHaveText(role)
+    }
+    const developer = page.locator(`.roster li[data-agent-id="${ids.developer}"]`)
+    const portraitSources = () => page.locator('.roster li').evaluateAll(cards => Object.fromEntries(
+      cards.map(card => [card.getAttribute('data-agent-id'), card.querySelector<HTMLImageElement>('.portrait')!.src]),
+    ))
+    const portraits = await portraitSources()
+    expect(new Set(Object.values(portraits)).size).toBe(4)
     delegated = true
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'outbound')
     await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
@@ -178,22 +192,23 @@ test('production start bridges live HTTP reads, handoff, outage/recovery and rel
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     await page.waitForTimeout(1700)
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
-    expect(await page.locator('.portrait').evaluateAll(images => images.map(i => (i as HTMLImageElement).src))).toEqual(portraits)
+    expect(await portraitSources()).toEqual(portraits)
     changedAppearance = true
-    await expect(page.locator('.portrait').nth(1)).toHaveAttribute('data-identity', '1:cap-v1:orchid-peach')
+    await expect(developer.locator('.portrait')).toHaveAttribute('data-identity', '1:cap-v1:orchid-peach:/api/agent-avatars/cap-v1/orchid-peach/rest.png?size=512&scale=1')
     const same = await page.locator('.portrait').evaluateAll(images => images.map(i => (i as HTMLImageElement).src))
     expect(new Set(same).size).toBe(1)
-    await expect(page.locator('.appearance-label').nth(1)).toHaveText('Paperclip · orchid-peach')
+    await expect(developer.locator('.appearance-label')).toHaveText('Paperclip · orchid-peach')
     missingAppearance = true
-    await expect(page.locator('.appearance-label').nth(1)).toHaveText('Local fallback · appearance unavailable')
-    await expect(page.locator('.portrait').nth(1)).toHaveAttribute('data-identity', 'local:developer')
+    await expect(developer.locator('.appearance-label')).toHaveText('Local fallback · appearance unavailable')
+    await expect(developer.locator('.portrait')).toHaveAttribute('data-identity', `local:${ids.developer}:`)
     missingAppearance = false
-    await expect(page.locator('.portrait').nth(1)).toHaveAttribute('data-identity', '1:cap-v1:orchid-peach')
+    await expect(developer.locator('.portrait')).toHaveAttribute('data-identity', '1:cap-v1:orchid-peach:/api/agent-avatars/cap-v1/orchid-peach/rest.png?size=512&scale=1')
     broken = true
     await expect(page.locator('.source')).toHaveText('DISCONNECTED')
     expect(await (await fetch(base + '/health')).json()).toEqual({ status: 'ok' })
     await expect(page.locator('.desk-label[data-role="developer"]')).toHaveAttribute('data-activity', 'working')
-    await expect(page.locator('.identity-name').nth(1)).toHaveText('Devon · engineer')
+    await expect(developer.locator('h3')).toHaveText('Devon')
+    await expect(developer.locator('.identity-name')).toHaveText('engineer')
     broken = false
     await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
     await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
