@@ -17,6 +17,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   const ctx = new Proxy({
     fillRect: (...args: number[]) => { if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args); if (['#eef0d9', '#98c4d0'].includes((ctx as unknown as CanvasRenderingContext2D).fillStyle as string)) activityGraphics.push(args) },
     roundRect: () => { environmentPaints++ },
+    createLinearGradient: () => ({ addColorStop() {} }),
     rotate: (angle: number) => rotations.push(angle),
     translate: (...args: number[]) => translations.push(args),
     drawImage: (image: unknown) => { if (image instanceof Image) images.push(image) },

@@ -1,7 +1,8 @@
 import { FRONT, type GhostPose } from './ghost-motion'
 import { PALETTES, appearanceKey } from './identity'
 import type { VisualAgent, VisualState } from './state'
-import { deskBounds, workspacePad, officeLayout } from './layout'
+import { deskBounds, workspacePad, officeLayout, MODULE_HEIGHT } from './layout'
+import { studioVariant, sharedDecorBounds } from './environment'
 /** The same native image is used on the canvas and in the roster. */
 export function avatarPath(agent: VisualAgent) {
   const a = agent.identity?.appearance
@@ -68,51 +69,132 @@ export function paintPortrait(image: HTMLImageElement, agent: VisualAgent) {
   image.src = avatarPath(agent) ?? fallbackGhost
 }
 
-/** Smooth, reusable architecture; native ghost images are painted separately. */
+/** Static material and lighting layers are cached by the renderer at device DPI. */
 export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
   const layout = officeLayout(state)
   ctx.save(); ctx.scale(3, 3)
   const box = (x: number, y: number, w: number, h: number, color: string, radius = 6) => {
     ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y, w, h, radius); ctx.fill()
   }
-  const plant = (x: number, y: number) => {
-    box(x - 9, y, 18, 16, '#d2b492', 4)
-    for (const [dx, dy] of [[-7, -6], [6, -10], [0, -18]]) {
-      ctx.fillStyle = dx ? '#668b73' : '#86a583'; ctx.beginPath(); ctx.ellipse(x + dx, y + dy, 8, 13, dx / 12, 0, Math.PI * 2); ctx.fill()
-    }
+  const oval = (x: number, y: number, w: number, h: number, color: string, angle = 0) => {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, w, h, angle, 0, Math.PI * 2); ctx.fill()
   }
-  box(0, 0, layout.width, layout.height, '#233942', 0)
+  const plant = (x: number, y: number, kind: number, scale = 1) => {
+    ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale)
+    oval(2, 13, 14, 4, '#394c4420')
+    box(-9, 0, 18, 15, '#bd9278', 5)
+    box(-10, 0, 20, 4, '#dcc4a8', 2)
+    box(-1, -29, 2, 30, '#748676', 1)
+    for (const [dx, dy] of [[-8, -10], [7, -17], [-4, -26], [4, -33]]) {
+      oval(dx, dy, kind === 1 ? 5 : 8, kind === 2 ? 8 : 12, dx < 0 ? '#78917b' : '#92aa86', dx / 12)
+    }
+    ctx.restore()
+  }
+  const mug = (x: number, y: number) => {
+    oval(x + 4, y + 2, 3, 3, '#eee5d3')
+    box(x - 3, y - 2, 7, 8, '#f6ecda', 2)
+    oval(x, y - 1, 2, 1, '#937964')
+  }
+  box(0, 0, layout.width, layout.height, '#35494c', 0)
   for (const m of layout.modules) {
-    const y = m.y
-    box(m.x, y, m.width, m.height, '#dbccb5', 12)
-    for (let line = y + 24; line < y + m.height; line += 24) box(m.x + 4, line, m.width - 8, .5, '#c6b497', 0)
-    box(28, y + 8, 388, 22, '#b7d4d5', 4)
-    for (const x of [32, 160, 288, 412]) box(x, y + 8, 3, 22, '#eef3eb', 0)
-    // Glass divider leaves the entire workspace circulation lane clear.
-    box(m.workspaceRight, y + 40, 3, m.height - 72, '#8caaa688', 1)
-    box(450, y + 44, 154, 160, '#c0ccc1', 12)
-    box(468, y + 54, 116, 38, '#f5f5e9', 4)
-    box(480, y + 66, 55, 3, '#90a99c', 1)
-    box(480, y + 75, 85, 3, '#c2cec0', 1)
-    box(484, y + 118, 84, 44, '#a77750', 18)
-    for (const x of [470, 574]) box(x, y + 125, 12, 26, '#607c80', 5)
-    box(450, y + 232, 154, 148, '#c5bba7', 18)
-    box(466, y + 248, 100, 32, '#7f9891', 10)
-    box(466, y + 248, 100, 9, '#68847d', 5)
-    box(486, y + 300, 62, 30, '#efdcc0', 15)
-    plant(589, y + 345)
-    plant(590, y + 30)
-    ctx.fillStyle = '#455e61'; ctx.font = '9px system-ui'; ctx.fillText(`STUDIO ${String(m.index + 1).padStart(2, '0')}`, m.x + 16, y + m.height - 13)
+    const y = m.y, v = studioVariant(m.index)
+    box(m.x, y + 3, m.width, m.height, '#152f3338', 14)
+    box(m.x, y, m.width, m.height, '#e3d7c2', 12)
+    // Quiet oak flooring; staggered joins suggest material without a busy grid.
+    for (let row = 0; row < 17; row++) {
+      const fy = y + 9 + row * 24
+      box(20, fy, 600, .6, '#a8947628', 0)
+      for (let x = 30 + (row % 3) * 58; x < 620; x += 174) box(x, fy, .6, 23, '#a894761c', 0)
+    }
+    box(24, y + 5, 396, 29, '#526f7130', 5)
+    box(28, y + 4, 388, 24, '#b9d5d3', 4)
+    box(30, y + 5, 384, 9, '#d6e7df', 3)
+    for (const x of [32, 160, 288, 412]) box(x, y + 4, 3, 24, '#f1f0e2', 0)
+    box(26, y + 28, 392, 4, '#f4e9d3', 2)
+    // Broad daylight is baked once, below every desk and avatar, without filters.
+    const daylight = ctx.createLinearGradient(0, y + 30, 0, y + 225)
+    daylight.addColorStop(0, '#fff6d75c'); daylight.addColorStop(1, '#fff6d700')
+    ctx.fillStyle = daylight; ctx.fillRect(24, y + 32, 396, 193)
+    const bounds = sharedDecorBounds(m.index)
+    ctx.save(); ctx.beginPath(); ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height); ctx.clip()
+    // Glass has a floor shadow, pale reflection and slim metal posts.
+    box(434, y + 47, 7, 318, '#596f6815', 3)
+    box(432, y + 42, 3, 312, '#90b0aa77', 1)
+    box(433, y + 46, 1, 294, '#f6fff6bb', 0)
+    for (const dy of [44, 190, 350]) box(432, y + dy, 4, 5, '#758a83', 1)
+    // Collaboration: rounded woven rug, idea board, oak meeting table.
+    box(448, y + 42, 156, 137, v.rug, v.roundedRug ? 28 : 8)
+    box(455, y + 48, 142, 124, '#f4efdf22', v.roundedRug ? 25 : 6)
+    box(465, y + 48, 124, 45, '#50646126', 5)
+    box(463, y + 45, 124, 44, '#b89d7f', 4)
+    box(466, y + 48, 118, 37, '#f4f0df', 2)
+    for (let note = 0; note < 5; note++) {
+      const nx = 475 + note * 19, ny = y + 55 + (note + v.board) % 2 * 8
+      box(nx, ny, 10, 8, ['#d5c48e', '#b9ccbf', '#d5b5a0'][(note + v.board) % 3], 1)
+      if (note < 4) box(nx + 11, ny + 3, 6, 1, '#a5b0a1', 0)
+    }
+    for (const x of [467, 577]) {
+      box(x, y + 117, 15, 29, '#435f6520', 6)
+      box(x - 1, y + 113, 15, 27, v.textile, 6)
+      box(x + 2, y + 115, 9, 2, '#e5e6d466', 1)
+    }
+    box(487, y + 123, 82, 36, '#554b3c20', 16)
+    box(483, y + 110, 88, 39, v.wood, 16)
+    box(489, y + 115, 76, 1, '#f6dfb84d', 0)
+    box(517, y + 119, 18, 13, '#71878a', 2)
+    box(519, y + 120, 14, 10, '#c8d7d2', 1)
+    mug(547, y + 123)
+    // Coffee and metal shelving form a smaller material zone between the rugs.
+    box(454, y + 187, 145, 48, '#b5b8aa', 5)
+    box(458, y + 190, 137, 8, v.wood, 2)
+    box(459, y + 216, 135, 3, '#77857d', 1)
+    for (const x of [459, 591]) box(x, y + 196, 3, 32, '#6c7d76', 1)
+    for (let b = 0; b < v.books.length; b++) box(472 + b * 9, y + 216 - v.books[b], 6, v.books[b], b % 2 ? v.accent : '#879a8c', 1)
+    box(561, y + 172, 23, 20, '#5f716d', 3)
+    box(565, y + 175, 15, 6, '#c4cebf', 1)
+    box(569, y + 183, 6, 7, '#eee4cf', 1)
+    mug(548, y + 185)
+    plant(472, y + 184, v.leaf, .48)
+    // Informal lounge: asymmetric upholstery, woven rug and a warm reading lamp.
+    box(449, y + 246, 155, 133, v.rug, v.roundedRug ? 36 : 12)
+    for (let line = 0; line < 4; line++) box(465, y + 357 + line * 3, 82, 1, '#f6f0df44', 0)
+    const sx = 461 + v.loungeShift
+    box(sx + 3, y + 268, 93, 35, '#445a4f25', 10)
+    box(sx, y + 256, 93, 40, v.textile, 9)
+    box(sx + 5, y + 260, 83, 10, '#e9e6d329', 5)
+    for (const dx of [8, 47]) box(sx + dx, y + 272, 36, 18, '#f1e7d521', 4)
+    box(sx + 11, y + 271, 15, 14, '#dfc7a7', 4)
+    oval(526, y + 332, 34, 16, '#42574b1c')
+    box(492, y + 313, 65, 27, '#f0dbb9', 13)
+    box(507, y + 317, 18, 12, v.accent, 2)
+    box(509, y + 317, 2, 12, '#eee3cd', 0)
+    mug(539, y + 323)
+    plant(v.plantSide, y + 351, v.leaf, .9)
+    const lx = v.plantSide === 590 ? 466 : 586
+    oval(lx, y + 305, 16, 6, '#f9e7bd44')
+    box(lx - 1, y + 293, 2, 30, '#8b8d79', 1)
+    oval(lx, y + 324, 7, 3, '#9e9e88')
+    box(lx - 9, y + 288, 18, 11, '#f4dfac', 5)
+    ctx.restore()
+    ctx.fillStyle = '#65766c'; ctx.font = '9px system-ui'; ctx.fillText(`STUDIO ${String(m.index + 1).padStart(2, '0')}`, m.x + 16, y + m.height - 13)
   }
   for (const a of state) {
     const x = a.col * 16 + 8, y = a.row * 16 + 8
+    const v = studioVariant(Math.floor((a.row - 6) / (MODULE_HEIGHT / 16)))
     const pad = workspacePad(a), desk = deskBounds(a)
-    box(pad.x, pad.y, pad.width, pad.height, '#b6b8a788', 16)
-    box(desk.x, desk.y + 3, desk.width, desk.height - 3, '#8e664d', 6)
-    box(desk.x, desk.y, desk.width, desk.height - 3, '#c99f73', 6)
-    box(x - 18, y - 19, 36, 17, '#344c56', 3)
-    box(x - 15, y - 16, 30, 11, '#a8c9ca', 2)
-    box(x + 25, y - 18, 6, 9, '#fff2d5', 2)
+    // Low-contrast textiles behind ghosts; all solid props remain on desktops.
+    box(pad.x + (a.col % 2 ? 4 : 0), pad.y, pad.width - 4, pad.height, v.rug + '88', v.roundedRug ? 24 : 10)
+    box(desk.x, desk.y + 3, desk.width, desk.height - 3, '#927357', 6)
+    box(desk.x, desk.y, desk.width, desk.height - 3, v.wood, 6)
+    box(desk.x + 5, desk.y + 3, desk.width - 10, 1, '#f4debd66', 0)
+    box(x - 18, y - 19, 36, 17, '#435c60', 3)
+    box(x - 15, y - 16, 30, 11, '#bfd8d5', 2)
+    box(x - 12, y - 14, 19, 2, '#e6ece0', 1)
+    box(x - 6, y - 2, 12, 2, '#71827d', 1)
+    if ((a.row + a.col) % 3 === 0) {
+      box(x + 23, y - 18, 10, 13, v.accent, 2)
+      box(x + 25, y - 17, 1, 11, '#f3e6c9', 0)
+    } else mug(x + 27, y - 16)
   }
   ctx.restore()
 }

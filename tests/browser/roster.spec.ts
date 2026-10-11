@@ -14,6 +14,11 @@ test('dynamic polling preserves specialist handoffs and pipeline on a narrow red
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto('/')
   await expect(page.locator('.roster li')).toHaveCount(4)
+  await page.locator('canvas').screenshot({ path: 'test-results/refresh-small.png' })
+  const firstArt = await page.locator('canvas').screenshot()
+  await page.reload()
+  await expect(page.locator('.roster li')).toHaveCount(4)
+  expect(await page.locator('canvas').screenshot()).toEqual(firstArt)
   const initialHeight = await page.locator('canvas').getAttribute('height')
   agents = [...agents, agent('generic')]
   await expect(page.locator('.roster li')).toHaveCount(5)
@@ -42,5 +47,6 @@ test('dynamic polling preserves specialist handoffs and pipeline on a narrow red
   await expect(page.locator('.desk-label[data-agent-id="generic"]')).toHaveCount(0)
   await page.setViewportSize({ width: 1440, height: 1000 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1440)
+  await page.locator('canvas').screenshot({ path: 'test-results/refresh-large.png' })
   expect(errors).toEqual([])
 })
