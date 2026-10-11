@@ -4,7 +4,7 @@ import type { VisualState } from './state'
 
 type Point = { x: number; y: number }
 type Trip = { kind: 'coffee' | 'work'; points: Point[]; distance: number; length: number; pause: number; returning: boolean }
-type Entry = { home: Point; activity: string; module: number; wait: number; trip?: Trip }
+type Entry = { home: Point; coffee: Point; activity: string; module: number; wait: number; trip?: Trip }
 export type OfficeActivity = Point & { dx: number; dy: number; phase: 'desk' | 'outbound' | 'pause' | 'returning'; prop?: 'cup' | 'paper'; working: boolean }
 const length = (points: Point[]) => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0)
 function position(points: Point[], distance: number): Point {
@@ -15,8 +15,21 @@ function position(points: Point[], distance: number): Point {
   }
   return points[points.length - 1]
 }
-/** Shared-clock state machine. One visitor per studio, identity-staggered cooldowns,
- * polling-stable state, and retraced paths on activity changes. No provider mutations. */
+// Each of the six reserved desks has a separate spot around the coffee/lounge area.
+// Uneven spacing and bounded identity offsets avoid a rigid lineup without allowing
+// polling, roster order, or another visitor leaving to move an established group.
+function coffeeAnchor(home: Point, id: string): Point {
+  const module = Math.floor(home.y / MODULE_HEIGHT)
+  const row = Math.floor((home.y % MODULE_HEIGHT - 148) / 128)
+  const slot = row * 2 + (home.x > 200 ? 1 : 0)
+  const spots = [[480, 260], [529, 255], [581, 262], [477, 310], [530, 305], [583, 312]]
+  const [x, y] = spots[slot]
+  const phase = hoverProfile(id).phase
+  return { x: x + Math.sin(phase) * 3, y: module * MODULE_HEIGHT + y + Math.cos(phase) * 3 }
+}
+
+/** Shared-clock state machine. Persistent independent coffee visits, identity-staggered
+ * departures, and retraced paths on activity changes. No provider mutations. */
 export function officeActivities() {
   const entries = new Map<string, Entry>()
   const delay = (id: string) => 16 + hoverProfile(id).phase * 4
@@ -27,7 +40,7 @@ export function officeActivities() {
       for (const agent of state) {
         const home = activityAnchor(agent), previous = entries.get(agent.id)
         if (!previous || previous.home.x !== home.x || previous.home.y !== home.y) {
-          entries.set(agent.id, { home, module: Math.floor(home.y / MODULE_HEIGHT), activity: agent.activity, wait: delay(agent.id) })
+          entries.set(agent.id, { home, coffee: coffeeAnchor(home, agent.id), module: Math.floor(home.y / MODULE_HEIGHT), activity: agent.activity, wait: delay(agent.id) })
         } else if (previous.activity !== agent.activity) {
           previous.activity = agent.activity
           previous.wait = delay(agent.id)
@@ -47,17 +60,19 @@ export function officeActivities() {
       }
       if (!e.trip) {
         e.wait -= delta
-        if (e.wait > 0 || [...entries.values()].some(other => other.module === e.module && other.trip)) return desk
+        // Seated coffee visitors do not reserve the studio's travel/work slot.
+        if (e.wait > 0 || [...entries.values()].some(other => other.module === e.module && other.trip &&
+          (other.trip.kind === 'work' || other.trip.returning || other.trip.distance < other.trip.length))) return desk
         const y = e.module * MODULE_HEIGHT
         const kind = e.activity === 'idle' ? 'coffee' : 'work'
         const points = [e.home, { x: 400, y: e.home.y }, { x: 400, y: y + 184 }, { x: 445, y: y + 184 },
-          ...(kind === 'work' ? [{ x: 525, y: y + 184 }] : [{ x: 445, y: y + 255 }, { x: 550, y: y + 255 }])]
+          ...(kind === 'work' ? [{ x: 525, y: y + 184 }] : [{ x: 445, y: e.coffee.y }, e.coffee])]
         e.trip = { kind, points, length: length(points), distance: 0, pause: 0, returning: false }
       }
       const trip = e.trip, before = position(trip.points, trip.distance)
       if (trip.returning) trip.distance = Math.max(0, trip.distance - delta * 42)
       else if (trip.distance < trip.length) trip.distance = Math.min(trip.length, trip.distance + delta * 42)
-      else { trip.pause += delta; if (trip.pause >= 5) trip.returning = true }
+      else { trip.pause = Math.min(5, trip.pause + delta); if (trip.kind === 'work' && trip.pause >= 5) trip.returning = true }
       const current = position(trip.points, trip.distance)
       const phase = trip.returning ? 'returning' : trip.distance === trip.length ? 'pause' : 'outbound'
       const prop = trip.kind === 'coffee' ? (e.activity === 'idle' && trip.pause > 0.5 ? 'cup' : undefined) : (e.activity === 'working' ? 'paper' : undefined)
