@@ -5,7 +5,7 @@ import { ghostMotion } from './ghost-motion'
 import { paintWorkActivity, workActivities } from './work-activities'
 import type { VisualState } from './state'
 import { sceneSize } from './scene'
-import { activityAnchor } from './layout'
+import { officeActivities, paintCarriedItem } from './office-activities'
 import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 
 /** The renderer receives visual state only. It owns no provider, networking or commands. */
@@ -16,12 +16,15 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   const ghosts = ghostMotion()
   const activities = workActivities()
   activities.sync(state)
+  const excursions = officeActivities()
+  excursions.sync(state)
   const ambient = ambientMotion()
   ambient.sync(state)
   ghosts.sync(state.map(agent => agent.id))
   const background = document.createElement('canvas')
   let pixelRatio = 1
   let geometry = ''
+  let handoffOrigin = { x: 0, y: 0 }
   let active: { event: Handoff; seconds: number } | undefined
   const participant = (id: string) => state.find(a => a.id === id || a.specialist === id)
   const hasParticipants = (event: Handoff) => !!participant(event.source) && !!participant(event.target)
@@ -37,6 +40,11 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     if (document.hidden) queue.clear()
     const next = queue.advance(performance.now(), motion.matches)
     if (next && next.event !== active?.event) {
+      const source = participant(next.event.source)
+      if (source) {
+        const origin = excursions.sample(source.id, 0, motion.matches)
+        handoffOrigin = { x: origin.x - (source.col * 16 + 8), y: origin.y - (source.row * 16 + 52) }
+      }
       bubble.textContent = next.event.kind === 'result' ? `Result ${next.event.taskId} · ${participant(next.event.source)?.name} → Orchestrator — ${next.event.title}` : (next.event.context === 'rework' || next.event.target !== 'developer') ? `${next.event.context === 'rework' ? 'Rework' : next.event.target === 'reviewer' ? 'Review' : 'QA'} ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
       bubble.dataset.target = next.event.target
       canvas.dataset.target = next.event.target
@@ -81,15 +89,22 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       const recipient = active ? participant(active.event.target)?.id : undefined
       for (const agent of state) {
         const visitor = courier === agent.id ? travel : undefined
-        const offset = ambient.sample(agent.id, elapsed, frameDelta, agent.activity === 'idle', motion.matches, !!active)
+        const excursion = excursions.sample(agent.id, document.hidden ? 0 : frameDelta, motion.matches || courier === agent.id, !!active)
+        const offset = ambient.sample(agent.id, elapsed, frameDelta, agent.activity === 'idle' && excursion.phase === 'desk', motion.matches, !!active)
         const moving = visitor && visitor.phase !== 'bubble'
-        const pose = ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : offset.dx, moving ? visitor.dy : offset.dy)
-        const x = (visitor?.x ?? agent.col * 16 + 8) + offset.x
-        const y = ((visitor?.y ?? agent.row * 16 + 8) + offset.y) + 44
+        const pose = { ...ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : excursion.dx || offset.dx, moving ? visitor.dy : excursion.dy || offset.dy) }
+        const settle = visitor && active ? Math.max(0, 1 - active.seconds / 2) : 0
+        const x = handoffOrigin.x * settle + (visitor?.x ?? excursion.x) + offset.x
+        const y = handoffOrigin.y * settle + (visitor ? visitor.y + 44 : excursion.y) + offset.y
+        if (agent.activity === 'working' && !motion.matches && !active && (excursion.phase === 'desk' || excursion.phase === 'pause')) {
+          pose.pitch += Math.sin(elapsed * 2.4) * 0.3
+          pose.lift += Math.sin(elapsed * 4.8) * 0.7
+        }
         paintGhost(ctx, agent, x, y, pose)
+        if (!active) paintCarriedItem(ctx, excursion, pose.lift)
         const interrupted = !!active && (courier === agent.id || recipient === agent.id)
         const activity = activities.sample(agent.id, frameDelta, motion.matches, interrupted || Math.hypot(offset.x, offset.y) > 0.5)
-        if (activity) paintWorkActivity(ctx, activityAnchor(agent), activity, 3)
+        if (activity && (excursion.phase === 'desk' || excursion.phase === 'pause')) paintWorkActivity(ctx, { x, y }, activity, 3)
         if (courier === agent.id && (motion.matches || travel?.carrying)) {
           // Pixel document is attached to the courier, never ambient movement.
           ctx.fillStyle = '#596575'
@@ -111,5 +126,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       ctx.restore()
     },
   })
-  return { setState: (next: VisualState) => { state = next; activities.sync(state); ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
+  return { setState: (next: VisualState) => { state = next; activities.sync(state); excursions.sync(state); ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }

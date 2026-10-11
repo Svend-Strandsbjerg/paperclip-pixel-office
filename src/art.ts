@@ -127,9 +127,11 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     ctx.save(); ctx.beginPath(); ctx.rect(bounds.x, bounds.y, bounds.width, bounds.height); ctx.clip()
     // Glass has a floor shadow, pale reflection and slim metal posts.
     box(434, y + 47, 7, 318, '#596f6815', 3)
-    box(432, y + 42, 3, 312, '#90b0aa77', 1)
-    box(433, y + 46, 1, 294, '#f6fff6bb', 0)
-    for (const dy of [44, 190, 350]) box(432, y + dy, 4, 5, '#758a83', 1)
+    box(432, y + 42, 3, 112, '#90b0aa77', 1)
+    box(432, y + 202, 3, 152, '#90b0aa77', 1)
+    box(433, y + 46, 1, 108, '#f6fff6bb', 0)
+    box(433, y + 202, 1, 138, '#f6fff6bb', 0)
+    for (const dy of [44, 154, 202, 350]) box(432, y + dy, 4, 5, '#758a83', 1)
     // Collaboration: rounded woven rug, idea board, oak meeting table.
     box(448, y + 42, 156, 137, v.rug, v.roundedRug ? 28 : 8)
     box(455, y + 48, 142, 124, '#f4efdf22', v.roundedRug ? 25 : 6)
