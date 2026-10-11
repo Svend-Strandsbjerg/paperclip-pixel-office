@@ -168,26 +168,35 @@ Run `NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npx playwright te
 
 The room keeps its original width and adds rows vertically, preserving legible desk size on narrow screens. Long desk labels truncate with full text in their title and roster card; roster text wraps, and large rosters scroll. Browser QA should inspect desktop and 390px layouts, large-roster scrolling, native asset loading, and all specialist routes with motion enabled and reduced motion.
 
-### Occasional office activities
+### Social idle and office activities
 
 `src/office-activities.ts` owns presentation-only desk → outbound → pause → return
-states. Working ghosts nod over their existing work props, carry a document into
-the right-side collaboration area, work there for five seconds, and return. Idle
-ghosts can visit the coffee shelf, pause with a cup, and carry it back. Activity
-changes remove the old prop immediately and retrace the current path. Actual
-handoffs take priority; reduced motion keeps ghosts at their desks with static
-work graphics. The ghost assets and authoritative activity state are unchanged.
+states. Idle ghosts independently visit coffee after an identity-based delay and
+remain there indefinitely while idle. Each reserved desk has a separated, subtly
+identity-offset coffee/lounge position; polling and roster changes do not reshuffle
+the group. Studios admit one optional trip in transit at a time; settled coffee
+visitors do not block newcomers or work-room visits. Working ghosts retain their
+five-second collaboration visits and existing work graphics.
 
-Trips are deterministic by agent identity: the initial delay is 16–42 seconds,
-then a 76–102 second cooldown after returning. Each studio allows one visitor at
-a time. This is a small waypoint system for the current furniture layout, not a
-general navigation/collision engine; desk labels stay at assigned desks.
+Assigning work removes that agent's cup immediately and starts its return to its
+work anchor. Other idle visitors stay. Real handoffs take priority for their
+participants without clearing bystanders' coffee state. Reduced motion relocates
+ghosts to their desks and keeps work graphics static. This remains a read-only
+visualization; no new API requests or Paperclip mutations are introduced.
 
-For QA, start with `npm run build` then
+For QA, build and start with `npm run build` then
 `OFFICE_MODE=demo HOST=127.0.0.1 PORT=4399 npm run start` (no login). Select **All
-idle** to observe coffee or **All working** to observe document trips. Switch
-state during a trip to check the return and prop removal. The deterministic
-browser fixture accelerates only animation frames, exercises desktop and 390px
-viewports, and captures coffee/work-room/mobile screenshots:
-`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost OFFICE_TEST_PORT=4399 npx playwright test tests/browser/activities.spec.ts --reporter=line`.
-Focused state-machine coverage: `npx tsx --test tests/office-activities.test.ts tests/ghost-renderer.test.ts tests/work-activities.test.ts`.
+idle** and allow up to three minutes for the group to gather, then **Mixed activity**
+to see only the newly working agents return. Labels stay at assigned desks.
+
+For a deterministic demonstration of exactly two new, non-specialist agents and
+one work interruption, run:
+`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost OFFICE_TEST_PORT=4399 npx playwright test tests/browser/social-idle.spec.ts --reporter=line`.
+The fixture intercepts only the browser's read-only office response, accelerates
+animation frames, holds both agents idle for eight simulated minutes, then changes
+only alpha-new to working on the next poll. It saves `test-results/social-together.png`
+and `test-results/social-one-working.png` and checks static reduced motion.
+No test login, live task assignment, or production data changes are needed.
+Existing `tests/browser/activities.spec.ts` covers work-room trips; handoff and
+dynamic roster specs remain applicable. Full Browser QA is a separate step.
+Focused coverage: `npx tsx --test tests/office-activities.test.ts tests/ghost-renderer.test.ts tests/work-activities.test.ts`.
