@@ -18,7 +18,7 @@ h1 { font-size: clamp(30px, 3.4vw, 44px); font-weight: 550; letter-spacing: -1.5
 .office-count { display: flex; flex-direction: column; align-items: end; gap: 5px; }
 .office-count strong { font: 42px ui-monospace, monospace; color: #c5d8ac; letter-spacing: -3px; }
 .office-count span { font: 9px ui-monospace, monospace; letter-spacing: 1.5px; color: #9bad9d; }
-.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 292px; gap: 22px; }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
 .office-panel { border: 1px solid #536055; border-radius: 7px; overflow: hidden; background: #263d37; }
 .panel-heading { height: 45px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; font: 10px ui-monospace, monospace; letter-spacing: 1.3px; color: #c0cdbb; }
 .panel-heading > span:last-child { color: #99ac9c; }
@@ -37,7 +37,7 @@ canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; 
 .team-heading { padding: 25px 23px 15px; }
 h2 { font-size: 22px; font-weight: 500; margin: 0; display: flex; align-items: center; gap: 10px; }
 h2 span { font: 10px ui-monospace, monospace; border: 1px solid #4d6050; border-radius: 4px; padding: 3px 6px; color: #b9cdb3; }
-.roster { padding: 0 20px; margin: 0; list-style: none; }
+.roster { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 24px; padding: 0 20px; margin: 0; list-style: none; }
 .roster li { display: flex; align-items: center; gap: 12px; padding: 20px 0; border-bottom: 1px solid #364c3f; }
 .avatar { display: grid; place-items: center; width: 36px; height: 40px; flex: 0 0 auto; background: #263e34; border-bottom: 3px solid var(--role-color); color: #dce8d5; font: 12px ui-monospace, monospace; }
 h3 { font-size: 13px; font-weight: 550; margin: 0 0 6px; }
@@ -60,7 +60,7 @@ footer { display: flex; align-items: start; justify-content: space-between; gap:
 .footer-slash { padding: 0 10px; color: #617560; }
 summary { cursor: pointer; text-align: right; }
 details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { font-size: 12px; }pre { white-space: pre-wrap; font-size: 10px; }
-@media (max-width: 1100px) { .workspace { grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; }.roster li { padding: 15px 0; }.desk-label { font-size: 9px; gap: 4px; padding: 4px; }.desk-label .activity { display: none; }.demo-note { padding: 18px; } }
+@media (max-width: 1100px) { .workspace { grid-template-columns: minmax(0, 1fr); gap: 16px; }.roster li { padding: 15px 0; }.desk-label { font-size: 9px; gap: 4px; padding: 4px; }.desk-label .activity { display: none; }.demo-note { padding: 18px; } }
 @media (max-width: 850px) { .workspace { grid-template-columns: 1fr; }.team-panel { display: block; }.team-heading { padding-bottom: 0; }.roster { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }.demo-note { padding: 18px 22px; }.desk-label { font-size: 11px; }.desk-label .activity { display: inline; }.demo-bar { flex-wrap: wrap; gap: 16px; }#activity-summary { margin-left: 0; }.office-count { display: none; } }
 @media (max-width: 480px) { .topbar { height: 66px; }.brand { gap: 7px; font-size: 10px; letter-spacing: 1px; }.brand-divider { margin: 0 2px; }.brand-sub { font-size: 10px; }.source { font-size: 8px; padding: 6px; letter-spacing: 0; }main { padding-top: 30px; }.intro { margin-bottom: 24px; }.desk-label { font-size: 8px; }.desk-label .activity { display: none; }.scene-footer { font-size: 8px; padding: 12px; }.roster { column-gap: 12px; padding: 0 15px; }.roster li { gap: 8px; }h3 { font-size: 11px; }.presence { display: none; }.avatar { width: 28px; }.mode-buttons { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }button { flex: 1; padding: 10px 8px; }.demo-bar { gap: 12px; }footer { font-size: 8px; } }
 
@@ -80,22 +80,6 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 .desk-label { background: #233942; border: 1px solid #62777a; box-shadow: 0 2px 0 #122932; }
 @media (max-width: 480px) { .avatar { width: 30px; height: 44px; }.avatar .portrait { width: 27px; height: 27px; }.role-info .identity-name { font-size: 9px; } }
 
-.pipeline-panel { margin-top: 24px; padding: 24px; border: 1px solid #d9d5ca; background: #faf8f1; color: #243c36; border-radius: 12px; }
-.pipeline-panel h2 { font-size: 18px; margin: 0 0 16px; }
-.delivery-card + .delivery-card { margin-top: 24px; border-top: 1px solid #d9d5ca; padding-top: 20px; }
-.delivery-card h3 { font-size: 15px; overflow-wrap: anywhere; }
-.delivery-card a { color: #386451; overflow-wrap: anywhere; }
-.delivery-meta { color: #64665c; font-size: 12px; overflow-wrap: anywhere; }
-.pipeline-rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); list-style: none; padding: 0; gap: 10px; }
-.gate { display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #eeece3; border: 1px solid #d3d0c5; box-shadow: 3px 3px 0 #dedbd0; min-width: 0; font-size: 12px; }
-.gate > span { text-transform: capitalize; }
-.gate-valid, .gate-ready { border-color: #53826c; background: #e7f0e6; }
-.gate-invalidated, .gate-rework { border-color: #b48240; background: #fbefd9; }
-.gate-active { border-color: #6886aa; background: #e8eef7; }
-.delivery-sha { font: 11px monospace; overflow-wrap: anywhere; }
-@media (max-width: 700px) { .pipeline-panel { padding: 16px; } .pipeline-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 380px) { .pipeline-rail { grid-template-columns: minmax(0, 1fr); } }
-
 /* Keep growing rosters readable without widening narrow viewports. */
 .desk-label { max-width: 38%; }
 .desk-label strong { overflow: hidden; text-overflow: ellipsis; }
@@ -105,26 +89,10 @@ details { max-width: 550px; line-height: 1.7; letter-spacing: 0; }details p { fo
 @media (max-width: 850px) { .roster { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .roster { grid-template-columns: minmax(0, 1fr); } }
 
-/* Keep one logical pixel per CSS pixel; scroll the floor, never shrink identities. */
+/* Expand the Studio to the available width; scroll narrow floors without shrinking identities. */
 .scene-viewport { overflow: auto; max-height: 78vh; overscroll-behavior: contain; }
 .scene { margin-inline: auto; flex: none; }
 .scene canvas { height: 100%; image-rendering: auto; }
 .desk-label { width: 150px; max-width: 150px; justify-content: center; font-size: 10px; border-radius: 6px; }
 .avatar .portrait { image-rendering: auto; }
 .mode-buttons { flex-wrap: wrap; }
-
-/* Delivery dashboard stays independent of the canvas environment. */
-.pipeline-summary, .pipeline-progress { font-size: 12px; color: #38564c; }
-.pipeline-progress { padding: 10px 12px; background: #e5ece4; border-radius: 6px; }
-.pipeline-rail { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.gate { border-radius: 8px; box-shadow: none; }
-.gate[aria-current="step"] { outline: 2px solid #386451; outline-offset: 2px; }
-.step-number { color: #425c53; font-size: 10px; letter-spacing: .06em; }
-.pipeline-person { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.pipeline-avatar { width: 40px; height: 40px; flex: none; background: #dce8e4; border-radius: 10px; }
-.pipeline-identity { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
-.pipeline-identity small { font-size: 10px; color: #425c53; }
-.gate-status { font-weight: 600; }
-.pipeline-handoff { margin: 0; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
-.gate-blocked { border-color: #ab544a; background: #f7e7e1; }
-@media (max-width: 480px) { .pipeline-rail { grid-template-columns: minmax(0, 1fr); } }

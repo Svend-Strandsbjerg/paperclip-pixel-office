@@ -99,7 +99,8 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       const recipient = active ? participant(active.event.target)?.id : undefined
       for (const agent of state) {
         const visitor = courier === agent.id ? travel : undefined
-        const excursion = excursions.sample(agent.id, document.hidden ? 0 : frameDelta, motion.matches || courier === agent.id, !!active)
+        const interrupted = !!active && (courier === agent.id || recipient === agent.id)
+        const excursion = excursions.sample(agent.id, document.hidden ? 0 : frameDelta, motion.matches || courier === agent.id, interrupted)
         const offset = ambient.sample(agent.id, elapsed, frameDelta, agent.activity === 'idle' && excursion.phase === 'desk', motion.matches, !!active)
         const moving = visitor && visitor.phase !== 'bubble'
         const pose = { ...ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : excursion.dx || offset.dx, moving ? visitor.dy : excursion.dy || offset.dy) }
@@ -111,8 +112,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
           pose.lift += Math.sin(elapsed * 4.8) * 0.7
         }
         paintGhost(ctx, agent, x, y, pose)
-        if (!active) paintCarriedItem(ctx, excursion, pose.lift)
-        const interrupted = !!active && (courier === agent.id || recipient === agent.id)
+        if (!interrupted) paintCarriedItem(ctx, excursion, pose.lift)
         const activity = activities.sample(agent.id, frameDelta, motion.matches, interrupted || Math.hypot(offset.x, offset.y) > 0.5)
         if (activity && (excursion.phase === 'desk' || excursion.phase === 'pause')) paintWorkActivity(ctx, { x, y }, activity, 3)
         if (courier === agent.id && (motion.matches || travel?.carrying)) {

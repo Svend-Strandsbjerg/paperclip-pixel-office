@@ -68,11 +68,11 @@ Copy `.env.example` to `.env` and fill in server-only values, or supply environm
 - `OFFICE_MODE=demo`: no Paperclip request or credentials required; the server returns the fixed mixed fixture. The browser visibly says LOCAL DEMO, stops polling and enables local scene controls.
 - `PAPERCLIP_API_URL`: trusted upstream base URL, without query, fragment or embedded credentials.
 - `PAPERCLIP_COMPANY_ID` and `PAPERCLIP_API_KEY`: company and runtime-provided API credentials, used only by the server.
-- `PAPERCLIP_AGENT_ROLES`: JSON object mapping each office role (`orchestrator`, `developer`, `browser-qa`, `reviewer`) to a different stable Paperclip agent UUID. Obtain IDs from your company's agent records; display-name changes require no update. When an agent is replaced, update its UUID and restart the server. This mapping is optional for roster display. All four are needed for specialist handoffs and the delivery pipeline; missing configuration leaves those workflow views unavailable without hiding the roster.
+- `PAPERCLIP_AGENT_ROLES`: JSON object mapping each office role (`orchestrator`, `developer`, `browser-qa`, `reviewer`) to a different stable Paperclip agent UUID. Obtain IDs from your company's agent records; display-name changes require no update. When an agent is replaced, update its UUID and restart the server. This mapping is optional for roster display. All four are needed for specialist handoffs; missing configuration leaves handoffs unavailable without hiding the roster.
 
 Run `npm run dev`, or `npm run build` followed by `npm run start`. Both load `.env` server-side (production uses Node’s `--env-file-if-exists`; existing environment variables take precedence). The npm startup commands enable Node's environment proxy support and honor existing `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`; no proxy bypass is added. Restart after changing configuration.
 
-Upstream reads are `GET /api/companies/{companyId}/agents` (2.5-second timeout) and `GET /api/companies/{companyId}/issues?limit=1000` (4-second timeout), with redirects rejected. Every returned agent is consumed independently of the specialist mapping. `running` becomes `working`; other statuses remain visible but render idle. Removed agents disappear on the next successful poll, while paused/terminated agents remain visible if Paperclip still returns them. Duplicate IDs, malformed responses, transport failures and upstream errors return HTTP 503 with a fixed generic message. The browser receives a bounded identity projection (`agents` with ID, name, role/title, status/activity, optional specialist, validated appearance and native avatar URL), ID-keyed activity/identity maps, tasks and deliveries. Credentials and private agent configuration stay server-side. Native public avatar URLs are allowlisted and served through the existing read-only avatar bridge. Responses are not cached; non-GET bridge methods return 405.
+Upstream reads are `GET /api/companies/{companyId}/agents` (2.5-second timeout) and `GET /api/companies/{companyId}/issues?limit=1000` (4-second timeout), with redirects rejected. Every returned agent is consumed independently of the specialist mapping. `running` becomes `working`; other statuses remain visible but render idle. Removed agents disappear on the next successful poll, while paused/terminated agents remain visible if Paperclip still returns them. Duplicate IDs, malformed responses, transport failures and upstream errors return HTTP 503 with a fixed generic message. The browser receives a bounded identity projection (`agents` with ID, name, role/title, status/activity, optional specialist, validated appearance and native avatar URL), ID-keyed activity/identity maps, tasks and completions. Credentials and private agent configuration stay server-side. Native public avatar URLs are allowlisted and served through the existing read-only avatar bridge. Responses are not cached; non-GET bridge methods return 405.
 
 Live mode visibly says LIVE · CONNECTED and hides demo controls. Polling updates both Canvas and labels through `rosterLayout()` and `renderer.setState()` without reload. Failures show DISCONNECTED outside the renderer and retain the last valid state, explicitly labeled as last received activity. Before the first valid response, the roster is empty and the summary says activity unavailable. Polling continues and automatically restores the connected indication on recovery.
 
@@ -80,7 +80,7 @@ Live mode visibly says LIVE · CONNECTED and hides demo controls. Polling update
 
 The issue bridge requests an explicit maximum of 1000 company issues (the supported Paperclip list bound) and selects child issues assigned to the configured Developer whose parent is assigned to the configured Orchestrator. It uses `id`, `parentId` and `assigneeAgentId` only on the server. Initial Developer browser tasks contain only the public `identifier` (maximum 32 characters) and whitespace-normalized `title` (maximum 80 characters). Browser QA children also qualify when the same Orchestrator parent has a Developer child with `status: done`. The QA assignment is the workflow evidence; Developer idle state is never consulted. QA tasks add `target: "browser-qa"` and optional `sha`. Status and `updatedAt` are not event keys: edits and reopening must not replay an assignment. Reviewer children qualify under the same configured Orchestrator parent when both Developer and Browser QA siblings have `status: done`. The newly observed Reviewer assignment is the authoritative Orchestrator delegation signal; completion is checked directly, but `done` alone is not interpreted as APPROVE. The bounded issue-list contract has no verified structured approval verdict, so the office does not parse free-text verdicts or infer approval from idle/runtime state. Reviewer tasks add `target: "reviewer"` and an optional SHA from their own assignment. Browser QA returns to newly created Developer tasks are supported as described below; Reviewer returns and later approval/merge transitions remain unsupported.
 
-Each browser owns its comparison baseline. The first successful task snapshot hydrates silently; newly appearing eligible tasks after that emit a visual-only `{source, target, taskId, title, sha?, context?}` event. A task identifier/destination pair is shown at most once per page lifetime, including reassignment away and back. The deduplication set is capped at 10,000 distinct identifiers; if exhausted, handoffs stay silent until reload rather than evicting IDs and replaying old assignments. Reload starts a fresh silent baseline. This is polling, so assignments created and removed entirely between polls cannot be observed. A response containing 1000 or more issues is treated as potentially truncated, so handoffs are unavailable rather than comparing an incomplete parent/child set. Companies must have fewer than 1000 issues for this bounded snapshot approach; larger companies need a future paginated or targeted-read implementation. Issue transport/timeouts, HTTP failures, malformed responses and the reached limit emit a server-only warning with a fixed diagnostic category (and HTTP status when applicable), never credentials, raw upstream errors or issue contents. Malformed individual issues are skipped; a title that becomes empty after sanitization uses “Untitled task”. Sequential upstream reads budget 2.5 seconds for agents and 4 seconds for issues, with an additional shared 1.5-second work-product budget and 1.5-second GitHub budget within the browser’s 11-second request timeout. An issue-read failure returns `tasks: null` while retaining fresh agent activity; browser/network failures also clear the comparison baseline. Recovery hydrates silently rather than replaying work missed during an outage. No history, credentials or event cursor is stored in the browser.
+Each browser owns its comparison baseline. The first successful task snapshot hydrates silently; newly appearing eligible tasks after that emit a visual-only `{source, target, taskId, title, sha?, context?}` event. A task identifier/destination pair is shown at most once per page lifetime, including reassignment away and back. The deduplication set is capped at 10,000 distinct identifiers; if exhausted, handoffs stay silent until reload rather than evicting IDs and replaying old assignments. Reload starts a fresh silent baseline. This is polling, so assignments created and removed entirely between polls cannot be observed. A response containing 1000 or more issues is treated as potentially truncated, so handoffs are unavailable rather than comparing an incomplete parent/child set. Companies must have fewer than 1000 issues for this bounded snapshot approach; larger companies need a future paginated or targeted-read implementation. Issue transport/timeouts, HTTP failures, malformed responses and the reached limit emit a server-only warning with a fixed diagnostic category (and HTTP status when applicable), never credentials, raw upstream errors or issue contents. Malformed individual issues are skipped; a title that becomes empty after sanitization uses “Untitled task”. Sequential upstream reads budget 2.5 seconds for agents and 4 seconds for issues, within the browser’s 11-second request timeout. An issue-read failure returns `tasks: null` while retaining fresh agent activity; browser/network failures also clear the comparison baseline. Recovery hydrates silently rather than replaying work missed during an outage. No history, credentials or event cursor is stored in the browser.
 
 `src/handoff.ts` owns this small transition detector and the deterministic route. The vendored fixed-seat foundation retained WALK sprites but removed its movement/pathfinding updater, so the renderer uses a shared movement engine with a fixed clear-aisle Developer route from Orchestrator's seat `(6,6)` via `(6,5)` and `(16,5)` to the seat-side tile `(16,6)`. The QA route goes from `(6,6)` via `(8,6)` and `(8,12)` to `(7,12)`, beside Browser QA at `(6,12)`. The Reviewer route goes from `(6,6)` via `(8,6)` and `(8,12)` to `(16,12)`, beside Reviewer at `(17,12)`. Each route takes four seconds outbound, displays a three-second DOM text bubble, then returns over the same route in four seconds. Events are presented sequentially with at most two waiting events (plus one active). Overflow drops the oldest waiting event; waiting events expire after 12 seconds. Timing uses the monotonic clock so suspended animation frames do not extend a handoff. Hiding the document clears active/waiting handoffs and drops incoming events while hidden; continued polling still records their identifiers, so dropped events do not replay. This is a recent visual cue, not an exhaustive task history. The Developer stays at `(17,6)`, Browser QA at `(6,12)` and Reviewer at `(17,12)`; their permanent identity and activity snapshots are unchanged. Reduced motion skips the route entirely: characters stay at their desks and the task bubble appears for three seconds, keeping the canvas static when activity is unchanged. The bounded bubble uses text content, wraps on narrow screens, and is announced as a status.
 
@@ -159,38 +159,44 @@ Developer verification and schema evidence: [rework verification](docs/rework-ve
 
 A sibling QA with missing, invalid or non-string creation time prevents rework qualification: unknown ordering leaves an ordinary Developer assignment.
 
-## Delivery pipeline overview
-
-The office includes a read-only delivery rail with exact-SHA gates, rework and human-merge readiness. See [selection, structured evidence requirements and failure behavior](docs/delivery-pipeline.md). Legacy tasks without structured gate results remain explicitly unknown. Optional `OFFICE_GITHUB_TOKEN` stays server-side.
 
 ## Dynamic roster QA
 
-`tests/roster.test.ts` covers the original specialists, a fifth generic agent, 40 agents, order independence, non-overlap, room expansion, rename/avatar updates, paused and removed agents. `tests/browser/roster.spec.ts` is the targeted polling/narrow/reduced-motion regression and also checks specialist handoff and pipeline preservation. Existing handoff, pipeline, provider, polling and production tests remain applicable.
+`tests/roster.test.ts` covers the original specialists, a fifth generic agent, 40 agents, order independence, non-overlap, room expansion, rename/avatar updates, paused and removed agents. `tests/browser/roster.spec.ts` is the targeted polling/narrow/reduced-motion regression and also checks specialist handoff preservation. Existing handoff, provider, polling and production tests remain applicable.
 
 Run `NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost npx playwright test tests/browser/roster.spec.ts --reporter=line` in environments with a localhost HTTP proxy. It intercepts only this browser's office-state response to expose an additional agent, then a 40-agent roster, without touching Paperclip or production mappings. The fixture is in the spec; no login is needed. For live QA use an authorized test company whose Paperclip roster already contains an extra agent: do not add it to `PAPERCLIP_AGENT_ROLES`. It appears on the next successful poll. Pixel Office provides no mutation controls or agent-creation endpoint.
 
 The room keeps its original width and adds rows vertically, preserving legible desk size on narrow screens. Long desk labels truncate with full text in their title and roster card; roster text wraps, and large rosters scroll. Browser QA should inspect desktop and 390px layouts, large-roster scrolling, native asset loading, and all specialist routes with motion enabled and reduced motion.
 
-### Occasional office activities
+### Social idle and office activities
 
 `src/office-activities.ts` owns presentation-only desk → outbound → pause → return
-states. Working ghosts nod over their existing work props, carry a document into
-the right-side collaboration area, work there for five seconds, and return. Idle
-ghosts can visit the coffee shelf, pause with a cup, and carry it back. Activity
-changes remove the old prop immediately and retrace the current path. Actual
-handoffs take priority; reduced motion keeps ghosts at their desks with static
-work graphics. The ghost assets and authoritative activity state are unchanged.
+states. Idle ghosts independently visit coffee after an identity-based delay and
+remain there indefinitely while idle. Each reserved desk has a separated, subtly
+identity-offset coffee/lounge position; polling and roster changes do not reshuffle
+the group. Studios admit one optional trip in transit at a time; settled coffee
+visitors do not block newcomers or work-room visits. Working ghosts retain their
+five-second collaboration visits and existing work graphics.
 
-Trips are deterministic by agent identity: the initial delay is 16–42 seconds,
-then a 76–102 second cooldown after returning. Each studio allows one visitor at
-a time. This is a small waypoint system for the current furniture layout, not a
-general navigation/collision engine; desk labels stay at assigned desks.
+Assigning work removes that agent's cup immediately and starts its return to its
+work anchor. Other idle visitors stay. Real handoffs take priority for their
+participants without clearing bystanders' coffee state. Reduced motion relocates
+ghosts to their desks and keeps work graphics static. This remains a read-only
+visualization; no new API requests or Paperclip mutations are introduced.
 
-For QA, start with `npm run build` then
+For QA, build and start with `npm run build` then
 `OFFICE_MODE=demo HOST=127.0.0.1 PORT=4399 npm run start` (no login). Select **All
-idle** to observe coffee or **All working** to observe document trips. Switch
-state during a trip to check the return and prop removal. The deterministic
-browser fixture accelerates only animation frames, exercises desktop and 390px
-viewports, and captures coffee/work-room/mobile screenshots:
-`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost OFFICE_TEST_PORT=4399 npx playwright test tests/browser/activities.spec.ts --reporter=line`.
-Focused state-machine coverage: `npx tsx --test tests/office-activities.test.ts tests/ghost-renderer.test.ts tests/work-activities.test.ts`.
+idle** and allow up to three minutes for the group to gather, then **Mixed activity**
+to see only the newly working agents return. Labels stay at assigned desks.
+
+For a deterministic demonstration of exactly two new, non-specialist agents and
+one work interruption, run:
+`NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost OFFICE_TEST_PORT=4399 npx playwright test tests/browser/social-idle.spec.ts --reporter=line`.
+The fixture intercepts only the browser's read-only office response, accelerates
+animation frames, holds both agents idle for eight simulated minutes, then changes
+only alpha-new to working on the next poll. It saves `test-results/social-together.png`
+and `test-results/social-one-working.png` and checks static reduced motion.
+No test login, live task assignment, or production data changes are needed.
+Existing `tests/browser/activities.spec.ts` covers work-room trips; handoff and
+dynamic roster specs remain applicable. Full Browser QA is a separate step.
+Focused coverage: `npx tsx --test tests/office-activities.test.ts tests/ghost-renderer.test.ts tests/work-activities.test.ts`.

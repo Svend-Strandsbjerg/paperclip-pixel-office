@@ -5,7 +5,12 @@ import { officeLayout, seatPosition } from '../src/layout'
 
 test('desktop gets a closer floor while mobile keeps a readable scrollable minimum', () => {
   const size = { width: 640, height: 448 }
-  assert.equal(studioViewport(size, 980, 1).scale, 1.35)
+  for (const available of [980, 1294, 1600]) {
+    const display = studioViewport(size, available, 2)
+    assert.equal(display.width, available) // use the space reclaimed from the team sidebar
+    assert.ok(Math.abs(display.height / display.width - size.height / size.width) < 1e-12)
+    assert.equal(display.bufferWidth, available * 2)
+  }
   assert.equal(studioViewport(size, 800, 1).scale, 1.25)
   for (const available of [288, 350, 640]) {
     const display = studioViewport(size, available, 1)
@@ -18,7 +23,7 @@ test('desktop gets a closer floor while mobile keeps a readable scrollable minim
 test('roster expansion preserves zoom and bounds DPI pixels for the entire floor', () => {
   for (const count of [0, 1, 4, 6, 12, 24, 40]) {
     const size = officeLayout(Array.from({ length: count }, (_, i) => seatPosition(i)))
-    for (const available of [350, 800, 980]) for (const dpr of [1, 1.25, 2, 3]) {
+    for (const available of [350, 800, 980, 1294, 1600]) for (const dpr of [1, 1.25, 2, 3]) {
       const display = studioViewport(size, available, dpr)
       assert.equal(display.scale, studioViewport(officeLayout([]), available, dpr).scale)
       assert.equal(display.height, Math.max(1, Math.ceil(count / 6)) * 448 * display.scale)

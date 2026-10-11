@@ -1,14 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { demoDeliveries } from '../../src/pipeline'
 
-test('dynamic polling preserves specialist handoffs and pipeline on a narrow reduced-motion office', async ({ page }) => {
+test('dynamic polling preserves specialist handoffs on a narrow reduced-motion office', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))
   const specialists = ['orchestrator', 'developer', 'browser-qa', 'reviewer']
   const agent = (id: string, specialist?: string) => ({ id, name: specialist ?? 'A very long generic agent name '.repeat(3), role: 'general', title: 'Research colleague', status: 'running', activity: 'working', specialist })
   let agents = specialists.map(s => agent(`uuid-${s}`, s))
   let tasks: { taskId: string; title: string }[] = []
-  await page.route('**/api/office-state', route => route.fulfill({ json: { mode: 'live', snapshot: {}, agents, tasks, deliveries: demoDeliveries } }))
+  await page.route('**/api/office-state', route => route.fulfill({ json: { mode: 'live', snapshot: {}, agents, tasks } }))
   await page.route('**/api/office-avatar/**', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="pink"/></svg>' }))
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -30,7 +29,7 @@ test('dynamic polling preserves specialist handoffs and pipeline on a narrow red
   tasks = [{ taskId: 'DEV-999', title: 'Specialist handoff still works' }]
   await expect(page.locator('.task-bubble')).toContainText('DEV-999')
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'bubble')
-  await expect(page.locator('.pipeline-panel')).toContainText('Ready for human merge')
+  await expect(page.locator('.pipeline-panel')).toHaveCount(0)
   agents = [...agents, ...Array.from({ length: 35 }, (_, i) => agent(`generic-${i}`))]
   await expect(page.locator('.roster li')).toHaveCount(40)
   expect(Number(await page.locator('canvas').getAttribute('height'))).toBeGreaterThan(Number(initialHeight))
@@ -49,4 +48,54 @@ test('dynamic polling preserves specialist handoffs and pipeline on a narrow red
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1440)
   await page.locator('canvas').screenshot({ path: 'test-results/refresh-large.png' })
   expect(errors).toEqual([])
+})
+
+for (const width of [1440, 390]) test(`Studio owns the workspace at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 })
+  await page.goto('/')
+  await expect(page.locator('.roster li')).toHaveCount(4)
+  await expect(page.getByRole('region', { name: 'Delivery pipeline overview' })).toHaveCount(0)
+  await expect(page.locator('.pipeline-panel, .delivery-card, .gate, .pipeline-avatar')).toHaveCount(0)
+  const studio = (await page.locator('.office-panel').boundingBox())!
+  const workspace = (await page.locator('.workspace').boundingBox())!
+  const team = (await page.locator('.team-panel').boundingBox())!
+  expect(studio.width).toBe(workspace.width)
+  expect(team.y).toBeGreaterThanOrEqual(studio.y + studio.height)
+  const canvas = (await page.locator('canvas').boundingBox())!
+  if (width === 1440) {
+    expect(canvas.width).toBe(await page.locator('.scene-viewport').evaluate(el => el.clientWidth))
+    expect(canvas.height).toBeGreaterThan(650)
+  } else {
+    expect(canvas.width).toBe(736)
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+})
+
+for (const reducedMotion of ['reduce', 'no-preference'] as const) test(`Studio preserves outbound and lifecycle return handoffs with ${reducedMotion}`, async ({ page }) => {
+  test.setTimeout(45000)
+  await page.emulateMedia({ reducedMotion })
+  const specialists = ['orchestrator', 'developer', 'browser-qa', 'reviewer']
+  const agents = specialists.map(specialist => ({ id: specialist, name: specialist, role: specialist, specialist, status: 'running', activity: 'working' }))
+  let assigned = false
+  let done = false
+  await page.route('**/api/office-state', route => route.fulfill({ json: {
+    mode: 'live', snapshot: {}, agents,
+    tasks: assigned ? [{ taskId: 'DEV-999', title: 'Build the Studio' }] : [],
+    completions: [{ taskId: 'DEV-999', title: 'Build the Studio', agentId: 'developer', status: done ? 'done' : 'open' }],
+  } }))
+  await page.goto('/')
+  await expect(page.locator('.source')).toHaveText('LIVE · CONNECTED')
+  const canvas = page.locator('canvas')
+  assigned = true
+  await expect(canvas).toHaveAttribute('data-target', 'developer')
+  if (reducedMotion === 'no-preference') await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
+  await expect(page.locator('.task-bubble')).toContainText('DEV-999', { timeout: 7000 })
+  await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 15000 })
+  done = true
+  await expect(canvas).toHaveAttribute('data-target', 'orchestrator')
+  if (reducedMotion === 'no-preference') await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
+  await expect(page.locator('.task-bubble')).toContainText('DEV-999', { timeout: 7000 })
+  await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 15000 })
+  await expect(page.locator('.roster [data-activity="working"]')).toHaveCount(4)
+  await expect(page.locator('.pipeline-panel')).toHaveCount(0)
 })

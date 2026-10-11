@@ -1,4 +1,3 @@
-import { demoDeliveries } from '../src/pipeline'
 import { mapIdentities, demoIdentities, mapRoster } from '../server/office-state.ts'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -21,8 +20,8 @@ test('workflow mapping is optional, unique when supplied, and never defaults to 
   assert.throws(() => readConfig({ ...env, PAPERCLIP_AGENT_ROLES: JSON.stringify({ ...ids, developer: 'a' }) }))
   assert.deepEqual(readConfig({ OFFICE_MODE: 'demo' }), { mode: 'demo' })
 })
-async function withBridge(config: NodeJS.ProcessEnv, fetcher: typeof fetch, run: (url: string) => Promise<void>, now = Date.now) {
-  const middleware = officeMiddleware(config, fetcher, now)
+async function withBridge(config: NodeJS.ProcessEnv, fetcher: typeof fetch, run: (url: string) => Promise<void>) {
+  const middleware = officeMiddleware(config, fetcher)
   const server = createServer((req, res) => { void middleware(req, res, () => { res.statusCode = 404; res.end() }) })
   server.listen(0, '127.0.0.1'); await once(server, 'listening')
   try { await run(`http://127.0.0.1:${(server.address() as {port: number}).port}/api/office-state`) }
@@ -40,7 +39,7 @@ test('HTTP bridge uses GET with server credentials and returns only minimal stat
   }, async url => {
     const response = await fetch(url)
     assert.equal(response.headers.get('cache-control'), 'no-store')
-    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: [], completions: [], deliveries: [] })
+    assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: [], completions: [] })
     assert.equal((await fetch(url, { method: 'POST' })).status, 405)
     assert.equal(calls, 2)
   })
@@ -57,7 +56,7 @@ test('configuration, transport, upstream HTTP and schema failures are sanitized'
 })
 test('demo is deterministic, explicitly labeled, and makes no upstream request', async () => {
   await withBridge({ OFFICE_MODE: 'demo' }, async () => { throw new Error('must not fetch') }, async url => {
-    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed'), identities: demoIdentities, tasks: null, completions: null, deliveries: demoDeliveries })
+    for (let i = 0; i < 2; i++) assert.deepEqual(await (await fetch(url)).json(), { mode: 'demo', snapshot: demoSnapshot('mixed'), identities: demoIdentities, tasks: null, completions: null })
   })
 })
 test('browser validates complete snapshots before updating the renderer', () => {
@@ -96,7 +95,7 @@ test('issue failures log safe server diagnostics while preserving live agent sta
     }, async url => {
       const response = await fetch(url)
       assert.equal(response.status, 200)
-      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: null, completions: null, deliveries: null })
+      assert.deepEqual(await response.json(), { mode: 'live', snapshot: mapAgents(agents, ids), identities: mapIdentities(agents, ids), agents: mapRoster(agents, ids), tasks: null, completions: null })
     })
     const message = warn.mock.calls.at(-1)!.arguments.join(' ')
     assert.ok(message.includes(diagnostic))
@@ -138,43 +137,6 @@ test('snapshot boundary preserves tasks while excluding identity and activity ov
     [{ ...task, taskId: 'bad' }], [{ ...task, title: 'x'.repeat(81) }]]) assert.throws(() => parseSnapshot({ ...valid, tasks }))
 })
 
-test('live pipeline bridge keeps agents on GitHub outage and exposes only structured projection', async () => {
-  const sha='a'.repeat(40), prUrl='https://github.com/owner/repo/pull/1'
-  const parent={id:'p',identifier:'DEV-1',title:'Delivery',status:'in_progress',assigneeAgentId:ids.orchestrator}
-  const roles=['developer','browser-qa','reviewer'] as const
-  const children=roles.map((role,i)=>({id:role,identifier:`DEV-${i+2}`,title:role,parentId:'p',assigneeAgentId:ids[role],status:'done',createdAt:new Date(i*2000).toISOString(),completedAt:new Date(i*2000+1000).toISOString()}))
-  let broken=false, now=0, githubCalls=0
-  await withBridge({...env,OFFICE_GITHUB_TOKEN:'github-secret'},async(url,options)=>{
-    assert.equal(options?.method,'GET');assert.equal(options?.redirect,'error')
-    const u=new URL(String(url))
-    if(u.hostname==='api.github.com') {
-      githubCalls++
-      assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer github-secret')
-      if(broken) return new Response('private',{status:503})
-      return Response.json({number:1,html_url:prUrl,state:'open',merged:false,head:{sha,ref:'feature'},base:{ref:'main',repo:{full_name:'owner/repo'}},private:'github-secret'})
-    }
-    assert.equal((options?.headers as Record<string,string>).Authorization,'Bearer secret')
-    if(u.pathname.endsWith('/agents')) return Response.json(agents)
-    if(u.pathname.endsWith('/issues')) return Response.json([parent,...children])
-    const issueId=u.pathname.split('/')[3]
-    return Response.json(issueId==='p'?[]:[{issueId,type:'pull_request',provider:'github',url:prUrl,metadata:{delivery:{sha,outcome:'passed'},private:'secret'}}])
-  },async url=>{
-    const ready=await(await fetch(url)).json();assert.equal(ready.deliveries[0].merge,'ready')
-    assert.ok(!JSON.stringify(ready).includes('secret'));assert.ok(!JSON.stringify(ready).includes('metadata'))
-    broken=true
-    const cached=await Promise.all([fetch(url).then(r=>r.json()),fetch(url).then(r=>r.json())])
-    assert.ok(cached.every(d=>d.deliveries[0].merge==='ready'));assert.equal(githubCalls,1)
-    now=120_000
-    const unavailable=await(await fetch(url)).json();assert.equal(unavailable.deliveries[0].merge,'waiting')
-    assert.deepEqual(unavailable.snapshot,ready.snapshot);assert.deepEqual(unavailable.tasks,ready.tasks)
-    assert.equal(githubCalls,2)
-    await fetch(url);assert.equal(githubCalls,2)
-    broken=false;now+=5000
-    assert.equal((await(await fetch(url)).json()).deliveries[0].merge,'ready')
-    assert.equal(githubCalls,3)
-  },()=>now)
-})
-
 test('live HTTP polling discovers and removes generic agents without a workflow mapping', async t => {
   t.mock.method(console, 'warn', () => {})
   let roster = [...agents]
@@ -189,9 +151,28 @@ test('live HTTP polling discovers and removes generic agents without a workflow 
     assert.equal(added.agents!.length, 5)
     assert.equal(added.agents!.find(a => a.id === 'new-researcher')!.activity, 'working')
     assert.equal(added.tasks, null)
-    assert.equal(added.deliveries, null)
     assert.ok(!JSON.stringify(added).includes('private'))
     roster = []
     assert.deepEqual((await read()).agents, [])
+  })
+})
+
+test('office reads only agents and issues while retaining assignment and completion semantics', async () => {
+  const paths: string[] = []
+  const parent = { id: 'parent', identifier: 'DEV-1', title: 'Studio', assigneeAgentId: ids.orchestrator, status: 'in_progress' }
+  const child = { id: 'child', parentId: 'parent', identifier: 'DEV-2', title: 'Build Studio', assigneeAgentId: ids.developer, status: 'in_progress' }
+  await withBridge(env, async (url, options) => {
+    assert.equal(options?.method, 'GET')
+    const path = new URL(String(url)).pathname
+    paths.push(path)
+    if (path.endsWith('/agents')) return Response.json(agents)
+    assert.equal(path, '/api/companies/company/issues')
+    return Response.json([parent, child])
+  }, async url => {
+    const data = await (await fetch(url)).json()
+    assert.deepEqual(data.tasks, [{ taskId: 'DEV-2', title: 'Build Studio' }])
+    assert.deepEqual(data.completions, [{ taskId: 'DEV-2', title: 'Build Studio', agentId: ids.developer, status: 'open' }])
+    assert.equal(Object.hasOwn(data, 'deliveries'), false)
+    assert.equal(paths.length, 2)
   })
 })

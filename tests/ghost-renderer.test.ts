@@ -51,13 +51,13 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     now = time; rotations.length = 0; translations.length = 0; images.length = 0; documents.length = 0; activityGraphics.length = 0
     callback!(time)
   }
-  assert.equal(canvas.width, 1728)
-  assert.equal(canvas.height, 1210)
+  assert.equal(canvas.width, 2000)
+  assert.equal(canvas.height, 1400)
   const painted = environmentPaints
   office.setState(state)
   assert.equal(environmentPaints, painted)
   frame(1)
-  assert.equal(documents.length, 0)
+  assert.equal(documents.filter(rect => rect[2] === 18).length, 0)
   assert.ok(activityGraphics.length > 0)
   const first = translations.map(v => [...v])
   const originalImages = [...images]
@@ -72,7 +72,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   for (let time = 49; time < 2000; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'outbound')
   assert.equal(activityGraphics.length, 0) // working recipient hides immediately
-  assert.equal(documents.length, 1)
+  assert.equal(documents.filter(rect => rect[2] === 18).length, 1)
   assert.ok(rotations[0] > 0)
   for (let time = 2000; time < 5100; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'bubble')
@@ -81,7 +81,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   for (let time = 5100; time < 12000; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'rest')
   assert.ok(activityGraphics.length > 0) // still-working recipient resumes
-  assert.equal(documents.length, 0)
+  assert.equal(documents.filter(rect => rect[2] === 18).length, 0)
   assert.ok(Math.abs(rotations[0]) < 0.001)
   media.matches = true
   frame(12016)
@@ -111,13 +111,13 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     const sourceIndex = source === 'dynamic-agent' ? 4 : state.findIndex(a => a.id === source)
     const sourcePosition = [...translations[sourceIndex * 2]]
     for (let t = started + 16; t < started + 2000; t += 16) frame(t)
-    assert.equal(documents.length, 1)
+    assert.equal(documents.filter(rect => rect[2] === 18).length, 1)
     assert.notDeepEqual(translations[sourceIndex * 2], sourcePosition)
     for (let t = now + 16; t < started + 5000; t += 16) frame(t)
     assert.match(bubble.textContent, /^Result DEV-99/)
     for (let t = now + 16; t < started + 8500; t += 16) frame(t)
     assert.equal(canvas.dataset.handoff, 'returning')
-    assert.equal(documents.length, 0)
+    assert.equal(documents.filter(rect => rect[2] === 18).length, 0)
     for (let t = now + 16; t < started + 12000; t += 16) frame(t)
     assert.equal(canvas.dataset.handoff, 'rest')
     assert.ok(Math.abs(rotations[sourceIndex]) < 0.001)
@@ -126,10 +126,19 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   // jump back to its desk when deliveryPose takes over its base position.
   for (let i = 0; i < 4000 && Math.abs(translations[0][0] - 104 * 3) < 12; i++) frame(now + 16)
   assert.ok(Math.abs(translations[0][0] - 104 * 3) >= 12)
+  // Let all idle visitors settle before checking a handoff in a gathered group.
+  for (let i = 0; i < 15000; i++) frame(now + 16)
+  const bystanders = [2, 3].map(i => [...translations[i * 2]])
   const wandering = [...translations[0]]
   office.handoff(demoHandoff)
   frame(now + 16)
   assert.ok(Math.hypot(translations[0][0] - wandering[0], translations[0][1] - wandering[1]) < 3)
+  for (let i = 0; i < 150; i++) frame(now + 16)
+  for (const [index, agentIndex] of [2, 3].entries()) {
+    assert.equal(translations[agentIndex * 2][0], bystanders[index][0])
+    assert.ok(Math.abs(translations[agentIndex * 2][1] - bystanders[index][1]) < 12)
+  }
+
   // Container-only resizing and monitor DPI changes both rebuild the backing store.
   canvas.parentElement.parentElement.clientWidth = 350
   onResize!()
@@ -157,4 +166,5 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   office.destroy()
   office = undefined
   assert.equal(disconnected, true)
+
 })

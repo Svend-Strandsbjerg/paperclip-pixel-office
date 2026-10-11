@@ -25,7 +25,7 @@ for (const config of [
       await page.route('**/api/office-state', route => route.fulfill({ json: { mode: 'live', snapshot: {}, agents, tasks: [], deliveries: [] } }))
       await page.goto(baseURL!)
       await expect(page.locator('.roster li')).toHaveCount(config.count)
-      const expected = studioViewport({ width: 640, height: Math.ceil(config.count / 6) * 448 }, config.width === 390 ? 350 : 980, config.dpr)
+      const expected = studioViewport({ width: 640, height: Math.ceil(config.count / 6) * 448 }, await page.locator('.scene-viewport').evaluate(el => el.clientWidth), config.dpr)
       await expect(page.locator('canvas')).toHaveAttribute('width', String(expected.bufferWidth))
       await expect(page.locator('canvas')).toHaveAttribute('height', String(expected.bufferHeight))
       await expect.poll(() => page.locator('canvas').evaluate(canvas => {

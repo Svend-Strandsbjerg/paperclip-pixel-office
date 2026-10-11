@@ -1,9 +1,7 @@
-import { parseDeliveries } from './pipeline-view'
-import type { Delivery } from './pipeline'
 import { normalizeAppearance, normalizeAvatarUrl, identityText, type Identity } from './identity'
 import { completionTracker, handoffTracker, type Completion, type Handoff, type Task } from './handoff'
 import { ROLES, type Activity, type RoleId, type RosterAgent } from './state'
-export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<string, Activity>; agents?: RosterAgent[]; identities?: Record<string, Identity>; tasks?: Task[] | null; completions?: Completion[] | null; deliveries?: Delivery[] | null }
+export type OfficeSnapshot = { mode: 'demo' | 'live'; snapshot: Record<string, Activity>; agents?: RosterAgent[]; identities?: Record<string, Identity>; tasks?: Task[] | null; completions?: Completion[] | null }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const prototype = Object.getPrototypeOf(value)
@@ -69,7 +67,6 @@ export function parseSnapshot(value: unknown): OfficeSnapshot {
       return { taskId: task.taskId, title: task.title, agentId: task.agentId, status: task.status as Completion['status'] }
     })
   }
-  if (Object.hasOwn(value, 'deliveries')) result.deliveries = parseDeliveries(value.deliveries)
   return result
 }
 /** Serial polling: no overlapping requests; retain the last valid state on failure. */
