@@ -1,9 +1,10 @@
 import { hoverProfile } from './ghost-motion'
+import { WALK_SECONDS } from './handoff'
 import { activityAnchor, MODULE_HEIGHT } from './layout'
 import type { VisualState } from './state'
 
 type Point = { x: number; y: number }
-type Trip = { kind: 'coffee' | 'work'; points: Point[]; distance: number; length: number; pause: number; returning: boolean }
+type Trip = { kind: 'coffee' | 'work'; points: Point[]; distance: number; length: number; pause: number; returning: boolean; returnSpeed?: number }
 type Entry = { home: Point; coffee: Point; activity: string; module: number; wait: number; trip?: Trip }
 export type OfficeActivity = Point & { dx: number; dy: number; phase: 'desk' | 'outbound' | 'pause' | 'returning'; prop?: 'cup' | 'paper'; working: boolean }
 const length = (points: Point[]) => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0)
@@ -55,7 +56,12 @@ export function officeActivities() {
       const delta = Math.max(0, Math.min(dt, 0.1))
       if (interrupted) {
         e.wait = delay(id)
-        if (e.trip) e.trip.returning = true
+        if (e.trip) {
+          e.trip.returning = true
+          // Capture once: recomputing from remaining distance would slow the return
+          // every frame and leave the recipient away from the handoff bubble.
+          e.trip.returnSpeed ??= Math.max(42, e.trip.distance / WALK_SECONDS)
+        }
         else return desk
       }
       if (!e.trip) {
@@ -70,7 +76,7 @@ export function officeActivities() {
         e.trip = { kind, points, length: length(points), distance: 0, pause: 0, returning: false }
       }
       const trip = e.trip, before = position(trip.points, trip.distance)
-      if (trip.returning) trip.distance = Math.max(0, trip.distance - delta * 42)
+      if (trip.returning) trip.distance = Math.max(0, trip.distance - delta * (trip.returnSpeed ?? 42))
       else if (trip.distance < trip.length) trip.distance = Math.min(trip.length, trip.distance + delta * 42)
       else { trip.pause = Math.min(5, trip.pause + delta); if (trip.kind === 'work' && trip.pause >= 5) trip.returning = true }
       const current = position(trip.points, trip.distance)
