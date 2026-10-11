@@ -164,7 +164,7 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
 })
 
 // Reduced-motion assignments keep every ghost at rest and add a document beside
-// the orchestrator (scene 104, 148; native device pixel ratio). Mask that document and
+// the orchestrator (scene 104, 148; actual backing-buffer scale). Mask that document and
 // only the two participants’ decorative effect regions; all avatar pixels and
 // nonparticipant effects must remain identical.
 async function reducedMotionFrame(canvas: Locator) {
@@ -174,13 +174,60 @@ async function reducedMotionFrame(canvas: Locator) {
     const context = copy.getContext('2d')!
     context.drawImage(node, 0, 0)
     const scale = node.width / 640
-    const colorAt = (x: number, y: number) => Array.from(context.getImageData(Math.floor(x * scale), Math.floor(y * scale), 1, 1).data)
-    const documentColors = [colorAt(112, 130), colorAt(113, 131), colorAt(114, 134)]
-    context.clearRect(112 * scale, 130 * scale, 8 * scale, 10 * scale)
+    // Fractional clearRect edges only partially erase rasterized edge pixels.
+    // Round outward to cover exactly the pixels touched by the document.
+    const left = Math.floor(112 * scale), top = Math.floor(130 * scale)
+    const width = Math.ceil(120 * scale) - left, height = Math.ceil(140 * scale) - top
+    const documentPixels = Array.from(context.getImageData(left, top, width, height).data)
+    // Composite the expected border, paper and text over the existing scene.
+    // This includes antialiased boundary pixels instead of sampling blended edges
+    // as if every scene coordinate landed on an integer backing-buffer pixel.
+    context.fillStyle = '#596575'; context.fillRect(112 * scale, 130 * scale, 8 * scale, 10 * scale)
+    context.fillStyle = '#fff4d6'; context.fillRect(113 * scale, 131 * scale, 6 * scale, 8 * scale)
+    context.fillStyle = '#8794a0'; context.fillRect(114 * scale, 134 * scale, 4 * scale, scale)
+    context.fillRect(114 * scale, 137 * scale, 3 * scale, scale)
+    const expectedDocumentPixels = Array.from(context.getImageData(left, top, width, height).data)
+    context.clearRect(left, top, width, height)
     for (const x of [104, 312]) context.clearRect((x + 20) * scale, (148 - 34) * scale, 48 * scale, 24 * scale)
-    return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentColors }
+    return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentPixels, expectedDocumentPixels }
   })
 }
+
+for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`, () => {
+  test.use({ deviceScaleFactor: dpr })
+  test('covers fractional document edges while preserving adjacent ghost pixels', async ({ page }) => {
+    for (const width of [736, 836, 864]) for (const ratio of [dpr, dpr * 0.757]) {
+      await page.setContent(`<canvas width="${Math.floor(width * ratio)}" height="${Math.ceil(448 * width / 640 * ratio)}" style="width:${width}px"></canvas>`)
+      const canvas = page.locator('canvas')
+      await canvas.evaluate((node: HTMLCanvasElement) => {
+        const ctx = node.getContext('2d')!
+        ctx.fillStyle = '#456789'; ctx.fillRect(0, 0, node.width, node.height)
+      })
+      const before = await reducedMotionFrame(canvas)
+      await canvas.evaluate((node: HTMLCanvasElement) => {
+        const ctx = node.getContext('2d')!
+        const scale = node.width / 640
+        ctx.scale(scale / 3, scale / 3)
+        ctx.fillStyle = '#596575'; ctx.fillRect(112 * 3, 130 * 3, 24, 30)
+        ctx.fillStyle = '#fff4d6'; ctx.fillRect(113 * 3, 131 * 3, 18, 24)
+        ctx.fillStyle = '#8794a0'; ctx.fillRect(114 * 3, 134 * 3, 12, 3)
+        ctx.fillRect(114 * 3, 137 * 3, 9, 3)
+      })
+      const during = await reducedMotionFrame(canvas)
+      expect(during.pixels).not.toBe(before.pixels)
+      expect(during.withoutDocument).toBe(before.withoutDocument)
+      expect(during.documentPixels).toEqual(before.expectedDocumentPixels)
+      // A changed ghost pixel immediately outside the mask must still fail.
+      await canvas.evaluate((node: HTMLCanvasElement) => {
+        const ctx = node.getContext('2d')!
+        ctx.resetTransform()
+        ctx.fillStyle = '#ff0000'
+        ctx.fillRect(Math.floor(112 * node.width / 640) - 1, Math.floor(135 * node.width / 640), 1, 1)
+      })
+      expect((await reducedMotionFrame(canvas)).withoutDocument).not.toBe(before.withoutDocument)
+    }
+  })
+})
 
 async function expectStaticDelivery(canvas: Locator, before: Awaited<ReturnType<typeof reducedMotionFrame>>) {
   await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
@@ -188,9 +235,7 @@ async function expectStaticDelivery(canvas: Locator, before: Awaited<ReturnType<
   expect(during.pixels).not.toBe(before.pixels)
   expect(during.withoutDocument).toBe(before.withoutDocument)
   // Visible document border, paper, and text line, not just an arbitrary change.
-  expect(during.documentColors).toEqual([
-    [89, 101, 117, 255], [255, 244, 214, 255], [135, 148, 160, 255],
-  ])
+  expect(during.documentPixels).toEqual(before.expectedDocumentPixels)
   for (let frame = 0; frame < 5; frame++) {
     await canvas.page().waitForTimeout(300)
     await expect(canvas).toHaveAttribute('data-handoff', 'bubble')

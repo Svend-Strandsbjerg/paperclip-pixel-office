@@ -33,7 +33,7 @@ test('dynamic polling preserves specialist handoffs on a narrow reduced-motion o
   agents = [...agents, ...Array.from({ length: 35 }, (_, i) => agent(`generic-${i}`))]
   await expect(page.locator('.roster li')).toHaveCount(40)
   expect(Number(await page.locator('canvas').getAttribute('height'))).toBeGreaterThan(Number(initialHeight))
-  expect(await page.locator('canvas').evaluate(c => c.getBoundingClientRect().width)).toBe(640)
+  expect(await page.locator('canvas').evaluate(c => c.getBoundingClientRect().width)).toBe(736)
   const scene = (await page.locator('.scene').boundingBox())!
   for (const label of await page.locator('.desk-label').all()) {
     const box = (await label.boundingBox())!
@@ -63,10 +63,10 @@ for (const width of [1440, 390]) test(`Studio owns the workspace at ${width}px`,
   expect(team.y).toBeGreaterThanOrEqual(studio.y + studio.height)
   const canvas = (await page.locator('canvas').boundingBox())!
   if (width === 1440) {
-    expect(canvas.width).toBeGreaterThan(1000)
+    expect(canvas.width).toBe(await page.locator('.scene-viewport').evaluate(el => el.clientWidth))
     expect(canvas.height).toBeGreaterThan(650)
   } else {
-    expect(canvas.width).toBe(640)
+    expect(canvas.width).toBe(736)
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
 })
