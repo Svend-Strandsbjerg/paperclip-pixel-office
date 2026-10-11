@@ -1,4 +1,3 @@
-import { renderPipeline } from './pipeline-view'
 import { paintPortrait, agentAccent } from './art'
 import { appearanceLabel, type Identity } from './identity'
 import type { RoleId, RosterAgent } from './state'
@@ -23,7 +22,6 @@ root.innerHTML = `
       </section>
       <aside class="team-panel" aria-labelledby="team-title"><div class="team-heading"><p class="eyebrow">IN THE OFFICE</p><h2 id="team-title">The team <span>0</span></h2></div><ul class="roster"></ul><div class="demo-note"><span class="note-icon" aria-hidden="true">◇</span><div><strong>A window into the work</strong><p>Connecting to office state. Paperclip stays in control; this office only visualizes activity.</p></div></div></aside>
     </div>
-    <section class="pipeline-panel" aria-label="Delivery pipeline overview"></section>
     <section class="demo-bar" aria-label="Demo controls"><div><span class="eyebrow">TRY A SCENE</span><p>See the office change pace.</p></div><div class="mode-buttons" role="group" aria-label="Demo activity"><button data-mode="mixed" aria-pressed="true">Mixed activity</button><button data-mode="working" aria-pressed="false">All working</button><button data-mode="idle" aria-pressed="false">All idle</button><button class="demo-handoff">Demo handoff</button><button class="demo-qa-handoff">Demo QA handoff</button><button class="demo-reviewer-handoff">Demo Reviewer handoff</button><button class="demo-rework-handoff">Demo Rework handoff</button></div><p id="activity-summary" role="status" aria-live="polite"></p></section>
     <footer><span>PIXEL OFFICE <span class="footer-slash">/</span> FOUNDATION 01</span><details><summary>Credits &amp; license</summary><p>Rendering and code-defined sprites adapted from <a href="https://github.com/rolandal/pixel-agents-standalone">Pixel Agents Standalone</a>, based on <a href="https://github.com/pixel-agents-hq/pixel-agents">Pixel Agents</a>.</p><pre class="license"></pre></details></footer>
   </main>`
@@ -102,8 +100,6 @@ root.querySelector('.demo-bar .eyebrow')!.textContent = 'OFFICE ACTIVITY'
 root.querySelector('.demo-bar p')!.textContent = 'Waiting for state.'
 showSnapshot({}, [])
 root.querySelector('#activity-summary')!.textContent = 'Activity unavailable'
-const pipeline = root.querySelector<HTMLElement>('.pipeline-panel')!
-renderPipeline(pipeline, null)
 let hasState = false
 const stopPolling = pollOffice(data => {
   hasState = true
@@ -113,10 +109,8 @@ const stopPolling = pollOffice(data => {
   root.querySelector('.demo-note p')!.textContent = isDemo ? 'Deterministic local demonstration. No live activity is shown.' : 'Read-only Paperclip activity. Updates automatically.'
   root.querySelector('.demo-bar p')!.textContent = isDemo ? 'See the office change pace.' : 'Live agent activity'
   identities = data.identities
-  const state = showSnapshot(data.snapshot, data.agents)
-  renderPipeline(pipeline, data.deliveries, state)
+  showSnapshot(data.snapshot, data.agents)
 }, () => {
-  renderPipeline(pipeline, null)
   root.querySelector('.source')!.textContent = 'DISCONNECTED'
   root.querySelector('.demo-note p')!.textContent = hasState ? 'Connection lost. Showing the last received activity and appearance.' : 'Office state unavailable. No live activity has been received.'
 }, event => office.handoff(event))

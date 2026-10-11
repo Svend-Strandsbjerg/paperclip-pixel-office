@@ -1,6 +1,4 @@
 import { avatarMiddleware } from './avatars.ts'
-import { createGithubReader, loadDeliveries } from './pipeline.ts'
-import { demoDeliveries, type Delivery } from '../src/pipeline.ts'
 import { normalizeAppearance, normalizeAvatarUrl, identityText, type Identity } from '../src/identity.ts'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ROLES, demoSnapshot, type Activity, type RoleId, type RosterAgent } from '../src/state.ts'
@@ -119,9 +117,8 @@ export const demoIdentities = Object.fromEntries(ROLES.map(role => [role.id, {
   name: role.name, role: role.name,
 }]))
 
-export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch, now = Date.now) {
+export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch = fetch) {
   const avatars = avatarMiddleware(env, fetcher)
-  const github = createGithubReader(fetcher, env.OFFICE_GITHUB_TOKEN, now)
   return async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
     if (req.url?.split('?')[0] !== '/api/office-state') return avatars(req, res, next)
     res.setHeader('Content-Type', 'application/json')
@@ -139,7 +136,6 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
       let identities: unknown = demoIdentities
       let tasks: Task[] | null = null
       let completions: Completion[] | null = null
-      let deliveries: Delivery[] | null = config.mode === 'demo' ? demoDeliveries : null
       if (config.mode === 'live') {
         const upstream = await fetcher(`${config.url}/api/companies/${encodeURIComponent(config.company!)}/agents`, {
           method: 'GET', headers: { Authorization: `Bearer ${config.key}` },
@@ -170,22 +166,13 @@ export function officeMiddleware(env: NodeJS.ProcessEnv, fetcher: typeof fetch =
           completions = mapCompletions(input, config.ids?.orchestrator, roster!)
           if (!ROLES.every(r => config.ids?.[r.id])) throw new Error('Workflow mapping unavailable')
           tasks = mapTasks(input, config.ids!)
-          try {
-            const deadline = AbortSignal.timeout(1500)
-            deliveries = await loadDeliveries(input, config.ids!, async path => {
-              deadline.throwIfAborted()
-              const response = await fetcher(`${config.url}${path}`, { method: 'GET', headers: { Authorization: `Bearer ${config.key}` }, redirect: 'error', signal: deadline })
-              if (!response.ok) throw new Error('Evidence unavailable')
-              return response.json()
-            }, fetcher, env.OFFICE_GITHUB_TOKEN, github)
-          } catch { deliveries = null }
         } catch {
           tasks = null
           // Fixed categories only: no credentials, issue data, URLs or raw upstream errors.
           console.warn(`[office-state] Issue read failed: ${issueFailure}; task handoffs unavailable, agent activity retained`)
         }
       }
-      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, ...(roster ? { agents: roster } : {}), tasks, completions, deliveries }))
+      res.end(JSON.stringify({ mode: config.mode, snapshot, identities, ...(roster ? { agents: roster } : {}), tasks, completions }))
     } catch {
       res.statusCode = 503
       res.end(JSON.stringify({ error: 'Office state unavailable' }))
