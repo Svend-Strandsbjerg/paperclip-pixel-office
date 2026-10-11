@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { officeActivities } from '../src/office-activities.ts'
 import { mapVisualState, rosterLayout, type VisualState } from '../src/state.ts'
 import { activityAnchor } from '../src/layout.ts'
+import { WALK_SECONDS, HANDOFF_SECONDS } from '../src/handoff.ts'
 
 function setup(activity: 'idle' | 'working') {
   const state = mapVisualState({ orchestrator: activity, developer: activity, 'browser-qa': activity, reviewer: activity })
@@ -138,4 +139,29 @@ test('reduced motion clears coffee travel and holds static functional work posit
   const working = state.map((a, i) => i === 0 ? { ...a, activity: 'working' as const } : a)
   machine.sync(working)
   assert.equal(machine.sample(state[0].id, 0.1, true).working, true)
+})
+
+test('interrupted coffee recipients reach every lounge seat home within the handoff walk window', () => {
+  const state = rosterLayout()(Array.from({ length: 12 }, (_, i) => ({
+    id: `recipient-${i}`, name: `Recipient ${i}`, role: 'general', status: 'idle', activity: 'idle' as const,
+  })))
+  for (const recipient of state) {
+    const machine = officeActivities()
+    machine.sync(state)
+    const gathered = advance(machine, state, 240)
+    assert.ok(gathered.every(frame => frame.phase === 'pause' && frame.prop === 'cup'))
+    const home = activityAnchor(recipient)
+    for (let step = 1; step <= HANDOFF_SECONDS * 60; step++) {
+      if (step % 60 === 0) machine.sync([...state].reverse())
+      for (const [i, agent] of state.entries()) {
+        const frame = machine.sample(agent.id, 1 / 60, false, agent.id === recipient.id)
+        if (agent.id !== recipient.id) { assert.deepEqual(frame, gathered[i]); continue }
+        assert.equal(frame.prop, undefined)
+        if (step === 1) assert.equal(frame.phase, 'returning')
+        if (step >= WALK_SECONDS * 60) {
+          assert.ok(Math.hypot(frame.x - home.x, frame.y - home.y) < 1, `${agent.id} absent at handoff step ${step}`)
+        }
+      }
+    }
+  }
 })
