@@ -67,7 +67,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     const size = sceneSize(state)
     pixelRatio = Math.max(1, window.devicePixelRatio || 1)
     const display = studioViewport(size, viewport.clientWidth, pixelRatio)
-    renderScale = display.scale * pixelRatio
+    renderScale = display.scale * display.effectivePixelRatio
     const key = `${display.width}:${display.height}:${pixelRatio}:${state.map(a => `${a.col},${a.row}`).join(';')}`
     scene.style.width = `${display.width}px`
     scene.style.height = `${display.height}px`

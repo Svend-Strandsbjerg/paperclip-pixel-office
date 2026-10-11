@@ -2,6 +2,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mountOffice } from '../src/renderer.ts'
 import { demoHandoff } from '../src/handoff.ts'
+import { seatPosition } from '../src/layout.ts'
+import { studioViewport } from '../src/studio-viewport.ts'
+import { sceneSize } from '../src/scene.ts'
 import { mapVisualState } from '../src/state.ts'
 
 test('renderer floats idle/working native ghosts, glides handoffs, settles, and respects reduced motion', t => {
@@ -24,10 +27,11 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     translate: (...args: number[]) => translations.push(args),
     drawImage: (image: unknown) => { if (image instanceof Image) images.push(image) },
   }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} })
+  const background = { width: 0, height: 0, getContext: () => ctx }
   const globals: Record<string, unknown> = {
     ResizeObserver: class { constructor(callback: () => void) { onResize = callback } observe() {} disconnect() { disconnected = true } },
     window: { devicePixelRatio: 2, matchMedia: () => media, addEventListener() {}, removeEventListener() {} },
-    document: { hidden: false, createElement: (tag: string) => tag === 'canvas' ? { getContext: () => ctx } : bubble, addEventListener() {}, removeEventListener() {} },
+    document: { hidden: false, createElement: (tag: string) => tag === 'canvas' ? background : bubble, addEventListener() {}, removeEventListener() {} },
     requestAnimationFrame: (next: FrameRequestCallback) => { callback = next; return 1 },
     cancelAnimationFrame() {},
     Image: class { complete = true; naturalWidth = 64; src = ''; constructor() { allocations++ } },
@@ -138,6 +142,18 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   office.setState([...state, { ...state[1], id: 'second-room', col: 6, row: 34 }])
   assert.equal(canvas.width, 2208)
   assert.equal(canvas.height, Math.ceil(896 * 1.15 * 3))
+  const largeRoster = Array.from({ length: 40 }, (_, i) => ({ ...state[i % state.length], id: `agent-${i}`, ...seatPosition(i) }))
+  office.setState(largeRoster)
+  const display = studioViewport(sceneSize(largeRoster), 350, 3)
+  assert.equal(canvas.width, display.bufferWidth)
+  assert.equal(canvas.height, display.bufferHeight)
+  assert.equal(background.width, canvas.width)
+  assert.equal(background.height, canvas.height)
+  assert.equal(canvas.parentElement.style.width, '736px')
+  const cappedPaints = environmentPaints
+  frame(now + 16)
+  frame(now + 16)
+  assert.equal(environmentPaints, cappedPaints) // requested DPR must not trigger repeated allocation
   office.destroy()
   office = undefined
   assert.equal(disconnected, true)
