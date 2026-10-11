@@ -69,8 +69,6 @@ export function paintGhost(ctx: CanvasRenderingContext2D, agent: VisualAgent, x:
   ctx.translate(-cx, -cy)
   const image = ghostImage(agent)
   if (image) {
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
     ctx.drawImage(image, (x - 16) * 3, (y - 26) * 3, 96, 96)
     ctx.drawImage(lightingFor(image), (x - 16) * 3, (y - 26) * 3, 96, 96)
   }
@@ -156,17 +154,6 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     const daylight = ctx.createLinearGradient(0, y + 48, 0, y + 255)
     daylight.addColorStop(0, '#fffbea88'); daylight.addColorStop(1, '#fffbea00')
     ctx.fillStyle = daylight; ctx.fillRect(24, y + 48, 584, 207)
-    // Slim storage and framed art on the west edge, clear of every reserved seat
-    // and of the existing handoff/coffee lanes, including future six-seat modules.
-    box(28, y + 177, 27, 27, '#aa987e', 3)
-    box(30, y + 179, 23, 23, '#f5edda', 2)
-    oval(39, y + 187, 5, 5, v.accent)
-    box(33, y + 194, 17, 5, '#aebba4', 2)
-    box(29, y + 219, 27, 27, '#546d6020', 4)
-    box(27, y + 215, 27, 27, v.wood, 3)
-    box(29, y + 218, 23, 17, '#8c7964', 1)
-    for (let b = 0; b < 4; b++) box(31 + b * 5, y + 221 + b % 2 * 3, 4, 13 - b % 2 * 3, b % 2 ? v.accent : '#d4d6b9', 1)
-    plant(41, y + 353, v.leaf, .65)
     // Open glass edge, outside circulation and all activity destinations.
     box(614, y + 55, 5, 322, '#b9d9d466', 2)
     box(616, y + 55, 1, 322, '#f8fffa', 0)
@@ -249,10 +236,10 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
     const x = a.col * 16 + 8, y = a.row * 16 + 8
     const v = studioVariant(Math.floor((a.row - 6) / (MODULE_HEIGHT / 16)))
     const pad = workspacePad(a), desk = deskBounds(a)
-    // Grounded desk depth and small accessories stay inside the existing desktop.
-    oval(x + 2, desk.y + desk.height, 38, 5, '#554a3814')
     // Low-contrast textiles behind ghosts; all solid props remain on desktops.
     box(pad.x + (a.col % 2 ? 4 : 0), pad.y, pad.width - 4, pad.height, v.rug + '88', v.roundedRug ? 24 : 10)
+    // Grounding stays visible above the rug and below the desktop.
+    oval(x + 2, desk.y + desk.height, 38, 5, '#554a3814')
     box(desk.x, desk.y + 3, desk.width, desk.height - 3, '#927357', 6)
     box(desk.x, desk.y, desk.width, desk.height - 3, v.wood, 6)
     box(desk.x + 5, desk.y + 3, desk.width - 10, 1, '#f4debd66', 0)
@@ -270,6 +257,21 @@ export function paintStudio(ctx: CanvasRenderingContext2D, state: VisualState) {
       box(x + 23, y - 18, 10, 13, v.accent, 2)
       box(x + 25, y - 17, 1, 11, '#f3e6c9', 0)
     } else mug(x + 27, y - 16)
+  }
+  // Standing west-edge props must cover every occupied workspace rug.
+  for (const m of layout.modules) {
+    const y = m.y, v = studioVariant(m.index)
+    // Slim storage and framed art on the west edge, clear of every reserved seat
+    // and of the existing handoff/coffee lanes, including future six-seat modules.
+    box(28, y + 177, 27, 27, '#aa987e', 3)
+    box(30, y + 179, 23, 23, '#f5edda', 2)
+    oval(39, y + 187, 5, 5, v.accent)
+    box(33, y + 194, 17, 5, '#aebba4', 2)
+    box(29, y + 219, 27, 27, '#546d6020', 4)
+    box(27, y + 215, 27, 27, v.wood, 3)
+    box(29, y + 218, 23, 17, '#8c7964', 1)
+    for (let b = 0; b < 4; b++) box(31 + b * 5, y + 221 + b % 2 * 3, 4, 13 - b % 2 * 3, b % 2 ? v.accent : '#d4d6b9', 1)
+    plant(41, y + 353, v.leaf, .65)
   }
   ctx.restore()
 }
