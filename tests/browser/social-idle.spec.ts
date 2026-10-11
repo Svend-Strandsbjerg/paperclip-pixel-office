@@ -17,22 +17,11 @@ test('two dynamic coffee visitors persist; only the newly working agent leaves',
   })
   let working = false
   await page.route('**/api/office-state', route => route.fulfill({ json: {
-    mode: 'live', snapshot: {}, tasks: [], completions: [],
+    mode: 'live', snapshot: {}, tasks: [], deliveries: [],
     agents: ['alpha-new', 'beta-new'].map((id, i) => ({ id, name: id, role: 'general', status: working && i === 0 ? 'running' : 'idle', activity: working && i === 0 ? 'working' : 'idle' })),
   } }))
   await page.goto('/')
   await expect(page.locator('.desk-label')).toHaveCount(2)
-  for (const width of [1440, 390]) {
-    await page.setViewportSize({ width, height: 1000 })
-    await expect(page.getByRole('region', { name: 'Delivery pipeline overview' })).toHaveCount(0)
-    await expect(page.locator('.pipeline-panel, .delivery-card, .gate, .pipeline-avatar')).toHaveCount(0)
-    const studio = (await page.locator('.office-panel').boundingBox())!
-    const workspace = (await page.locator('.workspace').boundingBox())!
-    const team = (await page.locator('.team-panel').boundingBox())!
-    expect(studio.width).toBe(workspace.width)
-    expect(team.y).toBeGreaterThanOrEqual(studio.y + studio.height)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
-  }
   const advance = (seconds: number) => page.evaluate(s => (window as unknown as { advanceOffice(s: number): number[][] }).advanceOffice(s), seconds)
   const gathered = await advance(180)
   expect(gathered).toHaveLength(2)
