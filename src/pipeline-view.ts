@@ -1,5 +1,7 @@
+import { paintPortrait, fallbackGhost } from './art'
+import type { VisualState } from './state'
 import { STAGES, exactSha, type Delivery } from './pipeline'
-const states = ['waiting', 'active', 'valid', 'invalidated', 'rework', 'unknown']
+const states = ['waiting', 'active', 'valid', 'invalidated', 'rework', 'blocked', 'unknown']
 /** Invalid additive data must not take down agent activity. Only projected fields survive. */
 export function parseDeliveries(input: unknown): Delivery[] | null {
   if (!Array.isArray(input)) return null
@@ -23,9 +25,16 @@ export function parseDeliveries(input: unknown): Delivery[] | null {
   } catch { return null }
 }
 const names = { developer: 'Developer', 'browser-qa': 'Browser QA', reviewer: 'Reviewer' }
+export const gateLabels = { waiting: 'Pending', active: 'In progress', valid: '✓ Completed', invalidated: 'Evidence outdated', rework: 'Changes requested · in progress', blocked: 'Blocked', unknown: 'Evidence unavailable' }
+export function currentStep(d: Delivery): number {
+  if (d.merge === 'merged') return -1
+  const active = d.gates.findIndex(g => ['active', 'rework', 'blocked'].includes(g.state))
+  const pending = d.gates.findIndex(g => g.state !== 'valid')
+  return active >= 0 ? active : pending >= 0 ? pending : d.gates.length
+}
 const rendered = new WeakMap<HTMLElement, string>()
-export function renderPipeline(root: HTMLElement, deliveries: Delivery[] | null | undefined) {
-  const payload = JSON.stringify(deliveries ?? null)
+export function renderPipeline(root: HTMLElement, deliveries: Delivery[] | null | undefined, agents: VisualState = []) {
+  const payload = JSON.stringify([deliveries ?? null, agents.map(a => [a.id, a.name, a.specialist, a.identity])])
   if (rendered.get(root) === payload) return
   rendered.set(root, payload)
   root.replaceChildren()
@@ -34,6 +43,12 @@ export function renderPipeline(root: HTMLElement, deliveries: Delivery[] | null 
   }
   add(root, 'h2', 'Delivery pipeline')
   if (!deliveries?.length) { add(root, 'p', deliveries ? 'No active delivery parents.' : 'Delivery state unavailable • waiting for a fresh snapshot'); return }
+  add(root, 'p', `${deliveries.length} ${deliveries.length === 1 ? 'delivery' : 'deliveries'} · ${deliveries.filter(d => d.merge === 'ready').length} awaiting human action`, 'pipeline-summary')
+  const agentFor = (role: string) => {
+    const matches = agents.filter(a => (a.specialist ?? a.id) === role)
+    return matches.length === 1 ? matches[0] : undefined
+  }
+  const nameFor = (role: string) => agentFor(role)?.identity?.name ?? agentFor(role)?.name ?? (role === 'orchestrator' ? 'Orchestrator' : names[role as keyof typeof names])
   for (const d of deliveries) {
     const card = add(root, 'article', '', 'delivery-card')
     add(card, 'h3', `${d.issue} · ${d.title}`)
@@ -44,15 +59,33 @@ export function renderPipeline(root: HTMLElement, deliveries: Delivery[] | null 
       add(card, 'p', `${d.pr.branch} → ${d.pr.base} · ${d.pr.state}`, 'delivery-meta')
       add(card, 'p', `HEAD ${d.pr.head}`, 'delivery-sha')
     }
+    const current = currentStep(d)
+    add(card, 'p', `${d.gates.filter(g => g.state === 'valid').length}/${d.gates.length} agent steps complete · ${d.merge === 'merged' ? 'Merged' : current === d.gates.length ? 'Awaiting human merge' : gateLabels[d.gates[current].state]}`, 'pipeline-progress')
     const rail = add(card, 'ol', '', 'pipeline-rail')
-    for (const g of d.gates) {
+    d.gates.forEach((g, index) => {
       const item = add(rail, 'li', '', `gate gate-${g.state}`)
-      add(item, 'strong', names[g.role]); add(item, 'span', g.state === 'valid' ? '✓ Valid' : g.state === 'rework' ? 'Rework active' : g.state)
+      if (index === current) item.setAttribute('aria-current', 'step')
+      add(item, 'small', `STEP ${index + 1}${index === current ? ' · CURRENT' : ''}`, 'step-number')
+      const person = add(item, 'div', '', 'pipeline-person')
+      const portrait = add(person, 'img', '', 'pipeline-avatar') as HTMLImageElement
+      portrait.alt = ''
+      const agent = agentFor(g.role)
+      if (agent) paintPortrait(portrait, agent)
+      else portrait.src = fallbackGhost
+      const identity = add(person, 'div', '', 'pipeline-identity')
+      add(identity, 'strong', nameFor(g.role))
+      add(identity, 'small', names[g.role])
+      add(item, 'span', gateLabels[g.state], 'gate-status')
+      add(item, 'p', `${nameFor(index === 0 ? 'orchestrator' : d.gates[index - 1].role)} → ${nameFor(g.role)}`, 'pipeline-handoff')
       if (g.task) add(item, 'small', g.task)
-      add(item, 'code', g.sha || 'SHA unavailable', 'delivery-sha')
-    }
+      if (g.sha) { const sha = add(item, 'code', g.sha.slice(0, 8), 'delivery-sha'); sha.title = g.sha }
+    })
     const human = add(rail, 'li', '', `gate gate-${d.merge}`)
-    add(human, 'strong', 'Human merge'); add(human, 'span', d.merge === 'ready' ? 'Ready for human merge' : d.merge)
+    if (current === d.gates.length) human.setAttribute('aria-current', 'step')
+    add(human, 'small', `STEP ${d.gates.length + 1}${current === d.gates.length ? ' · CURRENT' : ''}`, 'step-number')
+    add(human, 'strong', 'Human merge')
+    add(human, 'span', d.merge === 'ready' ? 'Ready for human merge' : d.merge === 'merged' ? '✓ Merged' : 'Pending', 'gate-status')
+    add(human, 'p', `${nameFor(d.gates[d.gates.length - 1].role)} → Human`, 'pipeline-handoff')
     add(card, 'p', d.notice, 'delivery-meta')
   }
 }

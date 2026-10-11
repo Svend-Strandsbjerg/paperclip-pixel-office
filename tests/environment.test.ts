@@ -40,3 +40,9 @@ test('multiple studios actually paint distinct textiles, wood and shelf contents
   assert.ok(multiple.some(c => c[0] === 'fillStyle' && c[1] === '#b9916d'))
   assert.equal(multiple.filter(c => c[0] === 'stop').length, 4)
 })
+
+test('each module opens to full-width glazing and daylight without changing circulation', () => {
+  const commands = drawing(12)
+  assert.equal(commands.filter(c => c[0] === 'roundRect' && c[3] === 584 && c[4] === 44).length, 2)
+  assert.equal(commands.filter(c => c[0] === 'fillRect' && c[3] === 584 && c[4] === 207).length, 2)
+})

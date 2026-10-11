@@ -53,6 +53,7 @@ export function derive(candidate: Candidate, ids: Record<RoleId, string>, produc
       if (!ambiguous) {
         if (!ordered || (sha && pr && sha !== pr.head)) state = 'invalidated'
         else if (current.status === 'in_progress') state = role === 'developer' && rework ? 'rework' : 'active'
+        else if (current.status === 'blocked') state = 'blocked'
         else if (current.status === 'todo') state = 'waiting'
         else if (current.status === 'done' && time(current.createdAt) <= time(current.completedAt) && sha && chain && (role === 'developer' || passed)) state = 'valid'
       }

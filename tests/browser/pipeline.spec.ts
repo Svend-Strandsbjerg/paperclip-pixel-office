@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { demoDeliveries } from '../../src/pipeline'
-import { demoSnapshot } from '../../src/state'
+import { ROLES, demoSnapshot } from '../../src/state'
 
 for (const width of [1440, 375, 320]) {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
@@ -37,6 +37,7 @@ for (const width of [1440, 375, 320]) {
       for (const sample of contrasts) expect(sample.ratio, JSON.stringify(sample)).toBeGreaterThanOrEqual(4.5)
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
       await pipeline.screenshot({ path: testInfo.outputPath('pipeline.png') })
+      await page.screenshot({ path: testInfo.outputPath('office-dashboard.png'), fullPage: true })
     })
   }
 }
@@ -84,4 +85,21 @@ test('unchanged live polls preserve PR keyboard focus and SHA text selection', a
   changed=true
   await expect(pipeline.getByText('No active delivery parents.')).toBeVisible()
   await expect(link).toHaveCount(0)
+})
+
+test('dashboard uses native identities, ordered handoffs and current blocked state', async ({ page }) => {
+  const delivery = structuredClone(demoDeliveries[0])
+  delivery.merge = 'waiting'
+  delivery.gates[1].state = 'blocked'
+  delivery.gates[2].state = 'waiting'
+  await page.route('**/api/office-state', route => route.fulfill({ json: {
+    mode: 'demo', snapshot: demoSnapshot('mixed'), deliveries: [delivery],
+    identities: Object.fromEntries(ROLES.map(r => [r.id, { name: r.id === 'developer' ? 'Ada' : r.name, role: r.name, ...(r.id === 'developer' ? { avatarUrl: '/api/agent-avatars/cap-v1/coral-mint/rest.png' } : {}) }])),
+  } }))
+  await page.goto('/')
+  const pipeline = page.getByRole('region', { name: 'Delivery pipeline overview' })
+  await expect(pipeline.locator('.pipeline-avatar').first()).toHaveAttribute('src', '/api/office-avatar/cap-v1/coral-mint.png')
+  await expect(pipeline.getByText('Ada → Browser QA', { exact: true })).toBeVisible()
+  await expect(pipeline.locator('[aria-current="step"]')).toContainText('Blocked')
+  await expect(pipeline.locator('.step-number')).toHaveText(['STEP 1', 'STEP 2 · CURRENT', 'STEP 3', 'STEP 4'])
 })
