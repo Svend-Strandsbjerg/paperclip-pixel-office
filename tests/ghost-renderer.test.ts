@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mountOffice } from '../src/renderer.ts'
 import { demoHandoff } from '../src/handoff.ts'
-import { seatPosition } from '../src/layout.ts'
+import { activityAnchor, seatPosition } from '../src/layout.ts'
 import { studioViewport } from '../src/studio-viewport.ts'
 import { sceneSize } from '../src/scene.ts'
 import { mapVisualState } from '../src/state.ts'
@@ -133,6 +133,48 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     assert.equal(canvas.dataset.handoff, 'rest')
     assert.ok(Math.abs(rotations[sourceIndex]) < 0.001)
   }
+  // QA-3: an older completion carries its own result without taking the
+  // newer open task's workstation card (normal and reduced motion).
+  const deskCard = (id: string) => {
+    const anchor = activityAnchor(state.find(agent => agent.id === id)!)
+    return documents.some(rect => rect[0] === (anchor.x + 35) * 3 && rect[1] === (anchor.y - 28) * 3 && rect[2] === 42)
+  }
+  const advance = (milliseconds: number) => {
+    const end = now + milliseconds
+    while (now < end) frame(Math.min(now + 50, end))
+  }
+  for (const reduced of [false, true]) {
+    media.matches = reduced
+    for (const taskId of ['TASK-1', 'TASK-2']) {
+      office.handoff({ ...demoHandoff, taskId })
+      advance(11200)
+      assert.equal(canvas.dataset.handoff, 'rest')
+      assert.ok(deskCard('developer'))
+    }
+    office.handoff({ source: 'developer', target: 'orchestrator', kind: 'result', taskId: 'TASK-1', title: 'Older work' })
+    advance(900)
+    assert.ok(deskCard('developer'))
+    if (!reduced) {
+      assert.equal(canvas.dataset.handoff, 'outbound')
+      assert.ok(documents.some(rect => rect[2] === 42 && rect[0] !== (activityAnchor(state[0]).x + 35) * 3 && rect[0] !== (activityAnchor(state[1]).x + 35) * 3))
+    }
+    advance(3200)
+    assert.match(bubble.textContent, /^Result TASK-1 /)
+    assert.ok(deskCard('orchestrator'))
+    assert.ok(deskCard('developer'))
+    advance(7100)
+    assert.equal(canvas.dataset.handoff, 'rest')
+    assert.ok(deskCard('developer'))
+    office.handoff({ source: 'developer', target: 'orchestrator', kind: 'result', taskId: 'TASK-2', title: 'Newer work' })
+    advance(900)
+    assert.equal(deskCard('developer'), false)
+    advance(3200)
+    assert.match(bubble.textContent, /^Result TASK-2 /)
+    assert.ok(deskCard('orchestrator'))
+    advance(7100)
+    assert.equal(deskCard('developer'), false)
+  }
+  media.matches = false
   // Begin a delivery during an actual excursion; the rendered courier must not
   // jump back to its desk when deliveryPose takes over its base position.
   for (let i = 0; i < 4000 && Math.abs(translations[0][0] - 104 * 3) < 12; i++) frame(now + 16)

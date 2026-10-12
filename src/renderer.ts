@@ -51,7 +51,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     if (next && next.event !== active?.event) {
       const source = participant(next.event.source)
       if (source) {
-        if (next.event.kind === 'result') items.pickup(source.id)
+        if (next.event.kind === 'result') items.pickup(source.id, next.event.taskId)
         handoffApproach = excursions.returnPath(source.id)
       }
       bubble.textContent = next.event.kind === 'result' ? `Result ${next.event.taskId} · ${participant(next.event.source)?.name} → Orchestrator — ${next.event.title}` : (next.event.context === 'rework' || next.event.target !== 'developer') ? `${next.event.context === 'rework' ? 'Rework' : next.event.target === 'reviewer' ? 'Review' : 'QA'} ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`

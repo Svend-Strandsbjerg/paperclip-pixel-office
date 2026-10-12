@@ -8,7 +8,12 @@ export function workItems() {
       for (const id of items.keys()) if (!present.has(id)) items.delete(id)
     },
     place(id: string, taskId: string, now: number) { items.set(id, { taskId, phase: 'waiting', placed: now }) },
-    pickup(id: string) { const item = items.get(id); items.delete(id); return item },
+    pickup(id: string, taskId: string) {
+      const item = items.get(id)
+      if (item?.taskId !== taskId) return undefined
+      items.delete(id)
+      return item
+    },
     sample(id: string, working: boolean, atDesk: boolean, now: number) {
       const item = items.get(id)
       if (item && working && atDesk && now - item.placed >= 1) item.phase = 'processing'
