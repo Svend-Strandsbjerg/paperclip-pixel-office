@@ -163,34 +163,30 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
   expect(errors).toEqual([])
 })
 
-// Reduced-motion assignments keep every ghost at rest and add a document beside
-// the orchestrator (scene 104, 148; actual backing-buffer scale). Mask that document and
-// only the two participants’ decorative effect regions; all avatar pixels and
-// nonparticipant effects must remain identical.
-async function reducedMotionFrame(canvas: Locator) {
-  return canvas.evaluate((node: HTMLCanvasElement) => {
+// Reduced motion places a persistent card at the recipient while ghosts stay still.
+async function reducedMotionFrame(canvas: Locator, target = 'developer') {
+  return canvas.evaluate((node: HTMLCanvasElement, recipient: string) => {
     const copy = document.createElement('canvas')
     copy.width = node.width; copy.height = node.height
     const context = copy.getContext('2d')!
     context.drawImage(node, 0, 0)
     const scale = node.width / 640
-    // Fractional clearRect edges only partially erase rasterized edge pixels.
-    // Round outward to cover exactly the pixels touched by the document.
-    const left = Math.floor(112 * scale), top = Math.floor(130 * scale)
-    const width = Math.ceil(120 * scale) - left, height = Math.ceil(140 * scale) - top
+    const x = recipient === 'browser-qa' ? 138 : 346
+    const y = recipient === 'developer' ? 119 : 247
+    // Round the mask outward and composite expected pixels over the scene to
+    // include antialiased edges at fractional backing-buffer scales.
+    const left = Math.floor(x * scale), top = Math.floor(y * scale)
+    const width = Math.ceil((x + 16) * scale) - left, height = Math.ceil((y + 20) * scale) - top
     const documentPixels = Array.from(context.getImageData(left, top, width, height).data)
-    // Composite the expected border, paper and text over the existing scene.
-    // This includes antialiased boundary pixels instead of sampling blended edges
-    // as if every scene coordinate landed on an integer backing-buffer pixel.
-    context.fillStyle = '#596575'; context.fillRect(112 * scale, 130 * scale, 8 * scale, 10 * scale)
-    context.fillStyle = '#fff4d6'; context.fillRect(113 * scale, 131 * scale, 6 * scale, 8 * scale)
-    context.fillStyle = '#8794a0'; context.fillRect(114 * scale, 134 * scale, 4 * scale, scale)
-    context.fillRect(114 * scale, 137 * scale, 3 * scale, scale)
+    context.fillStyle = '#596575'; context.fillRect(x * scale, y * scale, 16 * scale, 20 * scale)
+    context.fillStyle = '#fff4d6'; context.fillRect((x + 1) * scale, (y + 1) * scale, 14 * scale, 18 * scale)
+    context.fillStyle = '#d7aa66'; context.fillRect((x + 1) * scale, (y + 1) * scale, 14 * scale, 2 * scale)
+    context.fillStyle = '#8794a0'; context.fillRect((x + 3) * scale, (y + 6) * scale, 9 * scale, scale)
+    context.fillRect((x + 3) * scale, (y + 9) * scale, 7 * scale, scale)
     const expectedDocumentPixels = Array.from(context.getImageData(left, top, width, height).data)
     context.clearRect(left, top, width, height)
-    for (const x of [104, 312]) context.clearRect((x + 20) * scale, (148 - 34) * scale, 48 * scale, 24 * scale)
-    return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentPixels, expectedDocumentPixels }
-  })
+    return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentPixels, expectedDocumentPixels, target: recipient }
+  }, target)
 }
 
 for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`, () => {
@@ -208,10 +204,11 @@ for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`,
         const ctx = node.getContext('2d')!
         const scale = node.width / 640
         ctx.scale(scale / 3, scale / 3)
-        ctx.fillStyle = '#596575'; ctx.fillRect(112 * 3, 130 * 3, 24, 30)
-        ctx.fillStyle = '#fff4d6'; ctx.fillRect(113 * 3, 131 * 3, 18, 24)
-        ctx.fillStyle = '#8794a0'; ctx.fillRect(114 * 3, 134 * 3, 12, 3)
-        ctx.fillRect(114 * 3, 137 * 3, 9, 3)
+        ctx.fillStyle = '#596575'; ctx.fillRect(346 * 3, 119 * 3, 48, 60)
+        ctx.fillStyle = '#fff4d6'; ctx.fillRect(347 * 3, 120 * 3, 42, 54)
+        ctx.fillStyle = '#d7aa66'; ctx.fillRect(347 * 3, 120 * 3, 42, 6)
+        ctx.fillStyle = '#8794a0'; ctx.fillRect(349 * 3, 125 * 3, 27, 3)
+        ctx.fillRect(349 * 3, 128 * 3, 21, 3)
       })
       const during = await reducedMotionFrame(canvas)
       expect(during.pixels).not.toBe(before.pixels)
@@ -222,7 +219,7 @@ for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`,
         const ctx = node.getContext('2d')!
         ctx.resetTransform()
         ctx.fillStyle = '#ff0000'
-        ctx.fillRect(Math.floor(112 * node.width / 640) - 1, Math.floor(135 * node.width / 640), 1, 1)
+        ctx.fillRect(Math.floor(346 * node.width / 640) - 1, Math.floor(125 * node.width / 640), 1, 1)
       })
       expect((await reducedMotionFrame(canvas)).withoutDocument).not.toBe(before.withoutDocument)
     }
@@ -231,7 +228,7 @@ for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`,
 
 async function expectStaticDelivery(canvas: Locator, before: Awaited<ReturnType<typeof reducedMotionFrame>>) {
   await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
-  const during = await reducedMotionFrame(canvas)
+  const during = await reducedMotionFrame(canvas, before.target)
   expect(during.pixels).not.toBe(before.pixels)
   expect(during.withoutDocument).toBe(before.withoutDocument)
   // Visible document border, paper, and text line, not just an arbitrary change.
@@ -241,6 +238,7 @@ async function expectStaticDelivery(canvas: Locator, before: Awaited<ReturnType<
     await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
     expect(await canvas.evaluate((node: HTMLCanvasElement) => node.toDataURL())).toBe(during.pixels)
   }
+  return during.pixels
 }
 
 test('reduced-motion handoff shows task text and a static document with stationary ghosts', async ({ page }) => {
@@ -248,15 +246,16 @@ test('reduced-motion handoff shows task text and a static document with stationa
   await page.goto('/')
   const canvas = page.locator('canvas')
   await expect(canvas).toHaveAttribute('data-handoff', 'rest')
+  await page.getByRole('button', { name: 'All idle', exact: true }).click()
   const pixels = () => canvas.evaluate(node => node.toDataURL())
   const before = await reducedMotionFrame(canvas)
   await page.getByRole('button', { name: 'Demo handoff', exact: true }).click()
   await expect(canvas).toHaveAttribute('data-handoff', 'bubble')
   await expect(page.locator('.task-bubble')).toBeVisible()
   await expect(page.locator('.task-bubble')).toContainText('DEMO-1')
-  await expectStaticDelivery(canvas, before)
+  const delivered = await expectStaticDelivery(canvas, before)
   await expect(canvas).toHaveAttribute('data-handoff', 'rest')
-  expect(await pixels()).toBe(before.pixels)
+  expect(await pixels()).toBe(delivered)
 })
 
 test('live burst is bounded and discarded tasks never replay on subsequent polls', async ({ page }) => {
@@ -367,7 +366,7 @@ for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on m
   await expect(page.locator('.source')).toHaveText('LOCAL DEMO')
   await page.getByRole('button', { name: 'All idle', exact: true }).click()
   const canvas = page.locator('canvas')
-  const before = await reducedMotionFrame(canvas)
+  const before = await reducedMotionFrame(canvas, 'browser-qa')
   await page.getByRole('button', { name: 'Demo QA handoff', exact: true }).click()
   if (!reducedMotion) await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
   await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
@@ -386,7 +385,7 @@ for (const reducedMotion of [false, true]) test(`demo QA handoff is bounded on m
   }
   await page.screenshot({ path: `test-results/qa-mobile-${reducedMotion}.png`, fullPage: true })
   await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
-  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(before.pixels)
+  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(during)
   else await expectOrchestratorAtDesk(canvas)
 })
 
@@ -397,7 +396,7 @@ for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounde
   await expect(page.locator('.source')).toHaveText('LOCAL DEMO')
   await page.getByRole('button', { name: 'All idle', exact: true }).click()
   const canvas = page.locator('canvas')
-  const before = await reducedMotionFrame(canvas)
+  const before = await reducedMotionFrame(canvas, 'reviewer')
   await page.getByRole('button', { name: 'Demo Reviewer handoff', exact: true }).click()
   if (!reducedMotion) await expect(canvas).toHaveAttribute('data-handoff', 'outbound')
   await expect(page.locator('.task-bubble')).toBeVisible({ timeout: 6000 })
@@ -416,7 +415,7 @@ for (const reducedMotion of [false, true]) test(`demo Reviewer handoff is bounde
   }
   await page.screenshot({ path: `test-results/reviewer-mobile-${reducedMotion}.png`, fullPage: true })
   await expect(canvas).toHaveAttribute('data-handoff', 'rest', { timeout: 9000 })
-  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(before.pixels)
+  if (reducedMotion) expect(await canvas.evaluate((el: HTMLCanvasElement) => el.toDataURL())).toBe(during)
   else await expectOrchestratorAtDesk(canvas)
 })
 
@@ -502,3 +501,42 @@ for (const width of [390, 1440]) for (const reducedMotion of ['reduce', 'no-pref
     }
   })
 }
+
+test('off-desk handoff clears Reviewer furniture from the 266-second idle origin', async ({ page }) => {
+  await page.addInitScript(() => {
+    let callback: FrameRequestCallback, time = 1
+    let positions: number[][] = []
+    const translate = CanvasRenderingContext2D.prototype.translate
+    CanvasRenderingContext2D.prototype.translate = function (x, y) {
+      if (this.canvas.getAttribute('role') === 'img') positions.push([x / 3, y / 3])
+      translate.call(this, x, y)
+    }
+    window.requestAnimationFrame = next => { callback = next; return 1 }
+    Object.defineProperty(performance, 'now', { value: () => time })
+    Object.assign(window, { advanceCourier: (seconds: number) => {
+      const frames: number[][] = []
+      for (let i = 0; i < Math.round(seconds * 20); i++) {
+        positions = []; time += 50; callback(time)
+        frames.push(positions[0])
+      }
+      return frames
+    } })
+  })
+  await page.goto('/')
+  await expect(page.locator('.desk-label')).toHaveCount(4)
+  const advance = (seconds: number) => page.evaluate(s => (window as unknown as { advanceCourier(s: number): number[][] }).advanceCourier(s), seconds)
+  await page.getByRole('button', { name: 'All idle', exact: true }).click()
+  const before = (await advance(266)).at(-1)!
+  expect(before[0]).toBeGreaterThan(400) // exercise the remote idle origin
+  await page.getByRole('button', { name: 'Demo handoff', exact: true }).click()
+  const frames = await advance(11.1)
+  let previous = before
+  for (const [x, y] of frames) {
+    expect(Math.hypot(x - previous[0], y - previous[1])).toBeLessThan(20)
+    // Ghost center -> feet. Includes the original 0.9-second failure frame.
+    expect(x > 258 && x < 366 && y + 10 > 203 && y + 10 < 264).toBe(false)
+    previous = [x, y]
+  }
+  await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'rest')
+  expect(Math.abs(previous[0] - 104)).toBeLessThan(2)
+})

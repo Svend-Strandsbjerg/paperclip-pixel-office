@@ -70,3 +70,33 @@ test('roster removal and polling preserve the remaining agents independent clock
   machine.sync(state.slice(1))
   assert.deepEqual(advance(machine, state.slice(1), 30), advance(control, state, 30).slice(1))
 })
+
+test('off-desk couriers retrace all idle origins and deliver without crossing furniture', async () => {
+  const { deliveryPose } = await import('../src/handoff.ts')
+  const { machine, state } = setup(roster(12))
+  const behaviours = new Set<string>()
+  for (let step = 0; step < 6000; step++) {
+    const frames = state.map(a => machine.sample(a.id, 0.05, false))
+    if (step % 37) continue
+    for (const [i, source] of state.entries()) {
+      const origin = frames[i], approach = machine.returnPath(source.id)
+      if (origin.behaviour) behaviours.add(origin.behaviour)
+      const target = state[(i + 3) % state.length]
+      let previous = deliveryPose(0, source, target, approach)
+      assert.equal(previous.x, origin.x)
+      assert.equal(previous.y + 44, origin.y)
+      for (let tick = 1; tick <= 220; tick++) {
+        const pose = deliveryPose(tick * 0.05, source, target, approach)
+        assert.ok(Math.hypot(pose.x - previous.x, pose.y - previous.y) < 45, 'no teleport at segment or phase boundaries')
+        for (const seat of state) {
+          const b = deskBounds(seat), feet = pose.y + 44
+          assert.ok(!(pose.x > b.x - 16 && pose.x < b.x + b.width + 16 && feet > b.y - 6 && feet < b.y + b.height + 26), 'route clears desk exclusion')
+        }
+        previous = pose
+      }
+      assert.equal(previous.x, activityAnchor(source).x)
+      assert.equal(previous.y + 44, activityAnchor(source).y)
+    }
+  }
+  assert.equal(behaviours.size, 5)
+})

@@ -33,11 +33,11 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   let pixelRatio = 1
   let renderScale = 1
   let geometry = ''
-  let handoffOrigin = { x: 0, y: 0 }
+  let handoffApproach: { x: number; y: number }[] = []
   let active: { event: Handoff; seconds: number } | undefined
   const participant = (id: string) => state.find(a => a.id === id || a.specialist === id)
   const hasParticipants = (event: Handoff) => !!participant(event.source) && !!participant(event.target)
-  const travelPose = (event: Handoff, seconds: number) => deliveryPose(seconds, participant(event.source)!, participant(event.target)!)
+  const travelPose = (event: Handoff, seconds: number) => deliveryPose(seconds, participant(event.source)!, participant(event.target)!, handoffApproach)
   const queue = handoffQueue()
   const bubble = document.createElement('div')
   bubble.className = 'task-bubble'
@@ -52,8 +52,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       const source = participant(next.event.source)
       if (source) {
         if (next.event.kind === 'result') items.pickup(source.id)
-        const origin = excursions.sample(source.id, 0, motion.matches)
-        handoffOrigin = { x: origin.x - (source.col * 16 + 8), y: origin.y - (source.row * 16 + 52) }
+        handoffApproach = excursions.returnPath(source.id)
       }
       bubble.textContent = next.event.kind === 'result' ? `Result ${next.event.taskId} · ${participant(next.event.source)?.name} → Orchestrator — ${next.event.title}` : (next.event.context === 'rework' || next.event.target !== 'developer') ? `${next.event.context === 'rework' ? 'Rework' : next.event.target === 'reviewer' ? 'Review' : 'QA'} ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
       bubble.dataset.target = next.event.target
@@ -114,9 +113,8 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
         const offset = ambient.sample(agent.id, elapsed, frameDelta, agent.activity === 'idle' && excursion.phase === 'desk', motion.matches, !!active)
         const moving = visitor && visitor.phase !== 'bubble'
         const pose = { ...ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : excursion.dx || offset.dx, moving ? visitor.dy : excursion.dy || offset.dy) }
-        const settle = visitor && active ? Math.max(0, 1 - active.seconds / 2) : 0
-        const x = (visitor ? handoffOrigin.x * settle : 0) + (visitor?.x ?? excursion.x) + offset.x
-        const y = (visitor ? handoffOrigin.y * settle : 0) + (visitor ? visitor.y + 44 : excursion.y) + offset.y
+        const x = (visitor?.x ?? excursion.x) + offset.x
+        const y = (visitor ? visitor.y + 44 : excursion.y) + offset.y
         if (agent.activity === 'working' && !motion.matches && !active && (excursion.phase === 'desk' || excursion.phase === 'pause')) {
           pose.pitch += Math.sin(elapsed * 2.4) * 0.3
           pose.lift += Math.sin(elapsed * 4.8) * 0.7

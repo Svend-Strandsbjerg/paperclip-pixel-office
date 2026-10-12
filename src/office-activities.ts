@@ -50,6 +50,22 @@ export function officeActivities() {
         }
       }
     },
+    // Snapshot the occupied prefix before the courier's idle trip is cleared.
+    // Retracing these segments preserves furniture clearance from every idle origin.
+    returnPath(id: string): Point[] {
+      const e = entries.get(id)!, trip = e.trip
+      if (!trip) return [e.home]
+      const visited = [trip.points[0]]
+      let remaining = trip.distance
+      for (let i = 1; i < trip.points.length; i++) {
+        const a = trip.points[i - 1], b = trip.points[i]
+        const segment = Math.hypot(b.x - a.x, b.y - a.y)
+        if (remaining < segment) break
+        visited.push(b)
+        remaining -= segment
+      }
+      return [position(trip.points, trip.distance), ...visited.reverse()]
+    },
     sample(id: string, dt: number, reduced: boolean, interrupted = false): OfficeActivity {
       const e = entries.get(id)!
       const desk: OfficeActivity = { ...e.home, dx: 0, dy: 0, phase: 'desk', working: e.activity === 'working' }
