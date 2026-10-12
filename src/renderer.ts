@@ -19,7 +19,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   const ghosts = ghostMotion()
   const items = workItems()
   const displayedProfiles = new Map<string, ActivityProfile>()
-  let placedEvent: Handoff | undefined
+  let placedActivation: number | undefined
   const activities = workActivities()
   activities.sync(state)
   const excursions = officeActivities()
@@ -34,7 +34,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   let renderScale = 1
   let geometry = ''
   let handoffApproach: { x: number; y: number }[] = []
-  let active: { event: Handoff; seconds: number } | undefined
+  let active: { event: Handoff; seconds: number; activation: number } | undefined
   const participant = (id: string) => state.find(a => a.id === id || a.specialist === id)
   const hasParticipants = (event: Handoff) => !!participant(event.source) && !!participant(event.target)
   const travelPose = (event: Handoff, seconds: number) => deliveryPose(seconds, participant(event.source)!, participant(event.target)!, handoffApproach)
@@ -48,7 +48,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   function updateHandoff() {
     if (document.hidden) queue.clear()
     const next = queue.advance(performance.now(), motion.matches)
-    if (next && next.event !== active?.event) {
+    if (next && next.activation !== active?.activation) {
       const source = participant(next.event.source)
       if (source) {
         if (next.event.kind === 'result') items.pickup(source.id, next.event.taskId)
@@ -61,9 +61,9 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     if (next && !hasParticipants(next.event)) { queue.clear(); active = undefined; bubble.hidden = true; return }
     active = next
     const phase = active ? (motion.matches ? 'bubble' : travelPose(active.event, active.seconds).phase) : 'rest'
-    if (active && phase === 'bubble' && placedEvent !== active.event) {
+    if (active && phase === 'bubble' && placedActivation !== active.activation) {
       items.place(participant(active.event.target)!.id, active.event.taskId, elapsed)
-      placedEvent = active.event
+      placedActivation = active.activation
     }
     if (canvas.dataset.handoff !== phase) canvas.dataset.handoff = phase
     const hidden = phase !== 'bubble'
@@ -133,7 +133,7 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
         const anchor = activityAnchor(agent)
         if (item) paintWorkItem(ctx, anchor, item.phase === 'processing')
         if (activity) paintWorkActivity(ctx, anchor, activity, 3)
-        if (courier === agent.id && (motion.matches ? placedEvent !== active?.event : travel?.phase === 'outbound')) {
+        if (courier === agent.id && (motion.matches ? placedActivation !== active?.activation : travel?.phase === 'outbound')) {
           // The same card shape moves from hand to the workstation, or from
           // the completed work anchor into the returning specialist's hand.
           const hand = { x: x - 26, y: y + 11 + pose.lift }

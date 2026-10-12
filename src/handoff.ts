@@ -40,7 +40,8 @@ export const PENDING_LIMIT = 2
 export const MAX_WAIT_MS = 12000
 export function handoffQueue() {
   let pending: { event: Handoff; received: number }[] = []
-  let active: { event: Handoff; started: number } | undefined
+  let activation = 0
+  let active: { event: Handoff; started: number; activation: number } | undefined
   return {
     push(event: Handoff, now: number) {
       pending.push({ event, received: now })
@@ -51,8 +52,8 @@ export function handoffQueue() {
       pending = pending.filter(item => now - item.received < MAX_WAIT_MS)
       const duration = (reducedMotion ? BUBBLE_SECONDS : HANDOFF_SECONDS) * 1000
       if (active && now - active.started >= duration) active = undefined
-      if (!active && pending.length) active = { event: pending.shift()!.event, started: now }
-      return active ? { event: active.event, seconds: (now - active.started) / 1000 } : undefined
+      if (!active && pending.length) active = { event: pending.shift()!.event, started: now, activation: ++activation }
+      return active ? { event: active.event, activation: active.activation, seconds: (now - active.started) / 1000 } : undefined
     },
   }
 }

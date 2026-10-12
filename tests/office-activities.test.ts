@@ -100,3 +100,20 @@ test('off-desk couriers retrace all idle origins and deliver without crossing fu
   }
   assert.equal(behaviours.size, 5)
 })
+
+for (const count of [6, 12, 40]) {
+  test(`${count} idle agents maintain separated pause targets over 600 seconds at 50ms`, () => {
+    const { machine, state } = setup(roster(count))
+    let pairs = 0
+    for (let step = 0; step < 12000; step++) {
+      const paused = state.map(a => machine.sample(a.id, 0.05, false)).filter(f => f.phase === 'pause')
+      for (let i = 0; i < paused.length; i++) for (let j = i + 1; j < paused.length; j++) {
+        pairs++
+        const a = paused[i], b = paused[j]
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 40, `separation at step ${step}: ${JSON.stringify([a, b])}`)
+        assert.ok(Math.abs(a.x - b.x) >= 20 || Math.abs(a.y - b.y) >= 20, 'no overlapping pause frame')
+      }
+    }
+    assert.ok(pairs > 0)
+  })
+}

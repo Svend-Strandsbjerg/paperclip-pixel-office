@@ -18,11 +18,12 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   let lightingPaints = 0
   const rotations: number[] = [], translations: number[][] = [], images: unknown[] = []
   const documents: number[][] = []
+  const cardHeaders: { color: string; x: number; y: number }[] = []
   const activityGraphics: number[][] = []
   const media = { matches: false }
   const bubble = { hidden: true, textContent: '', dataset: {}, style: { setProperty() {} }, setAttribute() {}, remove() {} }
   const ctx = new Proxy({
-    fillRect: (...args: number[]) => { if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args); if (['#eef0d9', '#98c4d0'].includes((ctx as unknown as CanvasRenderingContext2D).fillStyle as string)) activityGraphics.push(args) },
+    fillRect: (...args: number[]) => { if (args[2] === 42 && args[3] === 6) cardHeaders.push({ color: (ctx as unknown as CanvasRenderingContext2D).fillStyle as string, x: args[0], y: args[1] }); if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args); if (['#eef0d9', '#98c4d0'].includes((ctx as unknown as CanvasRenderingContext2D).fillStyle as string)) activityGraphics.push(args) },
     roundRect: () => { environmentPaints++ },
     createLinearGradient: () => ({ addColorStop() {} }),
     rotate: (angle: number) => rotations.push(angle),
@@ -190,6 +191,21 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   for (const [index, agentIndex] of [2, 3].entries()) {
     assert.ok(Math.hypot(translations[agentIndex * 2][0] - bystanders[index][0], translations[agentIndex * 2][1] - bystanders[index][1]) < 330)
   }
+
+  // RV-2: replay the exact singleton while the first off-desk trip is active.
+  office.handoff(demoHandoff)
+  advance(8600) // first trip ends; the queued replay starts from the home desk
+  assert.equal(canvas.dataset.handoff, 'outbound')
+  assert.ok(Math.abs(translations[0][0] - 104 * 3) < 3, 'replay must capture the current home origin')
+  const replayOrigin = [...translations[0]]
+  advance(50)
+  assert.ok(Math.hypot(translations[0][0] - replayOrigin[0], translations[0][1] - replayOrigin[1]) < 25, 'replay glides without a jump')
+  advance(3900)
+  cardHeaders.length = 0
+  advance(50)
+  assert.equal(canvas.dataset.handoff, 'bubble')
+  const recipientAnchor = activityAnchor(state.find(agent => agent.id === 'developer')!)
+  assert.ok(cardHeaders.some(header => header.color === '#d7aa66' && header.x === (recipientAnchor.x + 35) * 3 && header.y === (recipientAnchor.y - 28) * 3), 'replay places a fresh waiting card instead of retaining the processing card')
 
   // Container-only resizing and monitor DPI changes both rebuild the backing store.
   canvas.parentElement.parentElement.clientWidth = 350

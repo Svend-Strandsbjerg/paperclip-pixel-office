@@ -502,7 +502,7 @@ for (const width of [390, 1440]) for (const reducedMotion of ['reduce', 'no-pref
   })
 }
 
-test('off-desk handoff clears Reviewer furniture from the 266-second idle origin', async ({ page }) => {
+test('off-desk handoff and queued demo replay clear furniture without an origin jump', async ({ page }) => {
   await page.addInitScript(() => {
     let callback: FrameRequestCallback, time = 1
     let positions: number[][] = []
@@ -529,7 +529,8 @@ test('off-desk handoff clears Reviewer furniture from the 266-second idle origin
   const before = (await advance(266)).at(-1)!
   expect(before[0]).toBeGreaterThan(400) // exercise the remote idle origin
   await page.getByRole('button', { name: 'Demo handoff', exact: true }).click()
-  const frames = await advance(11.1)
+  await page.getByRole('button', { name: 'Demo handoff', exact: true }).click()
+  const frames = await advance(22.1)
   let previous = before
   for (const [x, y] of frames) {
     expect(Math.hypot(x - previous[0], y - previous[1])).toBeLessThan(20)

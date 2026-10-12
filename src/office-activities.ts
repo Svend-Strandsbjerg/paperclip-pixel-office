@@ -7,7 +7,7 @@ type Point = { x: number; y: number }
 export type IdleBehaviour = 'local_idle' | 'coffee' | 'lounge' | 'wander' | 'social'
 type Trip = { kind: IdleBehaviour; points: Point[]; distance: number; length: number; pause: number; dwell: number; returning: boolean; returnSpeed?: number }
 type Entry = { home: Point; coffee: Point; activity: string; module: number; wait: number; cycle: number; lastKind?: IdleBehaviour; trip?: Trip }
-export type OfficeActivity = Point & { dx: number; dy: number; phase: 'desk' | 'outbound' | 'pause' | 'returning'; prop?: 'cup' | 'paper'; working: boolean; behaviour?: IdleBehaviour }
+export type OfficeActivity = Point & { dx: number; dy: number; phase: 'desk' | 'outbound' | 'pause' | 'returning'; prop?: 'cup'; working: boolean; behaviour?: IdleBehaviour }
 const length = (points: Point[]) => points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0)
 function position(points: Point[], distance: number): Point {
   for (let i = 1; i < points.length; i++) {
@@ -95,9 +95,12 @@ export function officeActivities() {
         if (kind === e.lastKind || (['coffee', 'social'].includes(kind) && ['coffee', 'social'].includes(e.lastKind ?? ''))) kind = kinds[(kinds.indexOf(kind) + 1) % kinds.length]
         e.lastKind = kind
         // Existing clear circulation lanes; local pauses never cross desk furniture.
-        const destination = kind === 'wander' ? { x: 400, y: y + 70 + decision * 18 }
+        // Seat-derived wander slots and separate lounge rows keep all pause
+        // destinations at least 40 units from every other agent's targets.
+        const slot = Math.floor((e.home.y % MODULE_HEIGHT - 148) / 128) * 2 + (e.home.x > 200 ? 1 : 0)
+        const destination = kind === 'wander' ? { x: 400, y: y + 70 + slot * 44 + decision * 3 }
           : kind === 'local_idle' ? { x: e.home.x + 18, y: e.home.y + 4 }
-          : kind === 'lounge' ? { x: e.coffee.x, y: e.coffee.y + 32 } : e.coffee
+          : kind === 'lounge' ? { x: e.coffee.x, y: e.coffee.y + 100 } : e.coffee
         const points = kind === 'local_idle' ? [e.home, destination]
           : kind === 'wander' ? [e.home, { x: 400, y: e.home.y }, destination]
           : [e.home, { x: 400, y: e.home.y }, { x: 400, y: y + 184 }, { x: 445, y: y + 184 }, { x: 445, y: destination.y }, destination]
@@ -121,7 +124,5 @@ export function paintCarriedItem(ctx: CanvasRenderingContext2D, frame: OfficeAct
   const x = (frame.x + 12) * 3, y = (frame.y - 15 + lift) * 3
   ctx.fillStyle = '#596575'; ctx.fillRect(x, y, 27, 30)
   ctx.fillStyle = '#fff4d6'; ctx.fillRect(x + 3, y + 3, 21, 24)
-  ctx.fillStyle = '#8794a0'
-  if (frame.prop === 'paper') { ctx.fillRect(x + 6, y + 9, 15, 3); ctx.fillRect(x + 6, y + 15, 12, 3) }
-  else { ctx.fillStyle = '#937964'; ctx.fillRect(x + 3, y + 3, 21, 6); ctx.fillStyle = '#fff4d6'; ctx.fillRect(x + 27, y + 9, 6, 12) }
+  ctx.fillStyle = '#937964'; ctx.fillRect(x + 3, y + 3, 21, 6); ctx.fillStyle = '#fff4d6'; ctx.fillRect(x + 27, y + 9, 6, 12)
 }
