@@ -5,7 +5,7 @@ import { mapCompletions } from '../server/office-state'
 import { parseSnapshot } from '../src/provider'
 import { ROLES, mapVisualState, rosterLayout } from '../src/state'
 import { sceneSize } from '../src/scene'
-import { officeLayout } from '../src/layout'
+import { activityAnchor, officeLayout } from '../src/layout'
 
 test('Developer, Browser QA, Reviewer and future agents return only authoritative completed child work', () => {
   for (const id of ['developer', 'browser-qa', 'reviewer', 'future-agent']) {
@@ -45,7 +45,7 @@ test('outbound and generic return couriers carry paper to delivery, face travel,
   for (const source of [...ROLES, { col: 6, row: 30 }]) {
     const target = source === ROLES[0] ? ROLES[1] : ROLES[0]
     const start = deliveryPose(0, source, target), delivered = deliveryPose(5, source, target), home = deliveryPose(11, source, target)
-    assert.deepEqual([start.x, start.y], [source.col * 16 + 8, source.row * 16 + 8])
+    assert.deepEqual([start.x, start.y], [activityAnchor(source).x, activityAnchor(source).y - 44])
     assert.equal(start.carrying, true)
     assert.equal(delivered.phase, 'bubble'); assert.equal(delivered.carrying, true)
     assert.equal(delivered.dx, 0); assert.equal(delivered.dy, 0)
@@ -65,7 +65,7 @@ test('delivery arrivals and both travel legs clear furniture for known pairs and
   for (const source of state) for (const target of state) {
     if (source.id === target.id) continue
     const arrival = deliveryPose(4, source, target)
-    assert.deepEqual([arrival.x, arrival.y], [target.col * 16 + 8 + (target.col < 12 ? 48 : -48), target.row * 16 + 8])
+    assert.deepEqual([arrival.x, arrival.y], [activityAnchor(target).x + (target.col < 12 ? 48 : -48), activityAnchor(target).y - 44])
     for (let step = 0; step <= 1100; step++) {
       const pose = deliveryPose(step / 100, source, target)
       const x = pose.x, y = pose.y + 44

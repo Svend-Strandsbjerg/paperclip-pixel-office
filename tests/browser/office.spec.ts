@@ -491,7 +491,7 @@ for (const width of [390, 1440]) for (const reducedMotion of ['reduce', 'no-pref
         // know only the avatar anchor and their fixed local drawing envelope.
         return labels.flatMap(label => {
           const x = box.x + parseFloat(label.style.left) / 100 * box.width
-          const y = box.y + parseFloat(label.style.top) / 100 * box.height + 78 * scale
+          const y = box.y + parseFloat(label.style.top) / 100 * box.height - 22 * scale
           const effect = { left: x + 20 * scale, right: x + 68 * scale, top: y - 34 * scale, bottom: y - 10 * scale }
           return bounds.filter(b => effect.left < b.right && effect.right > b.left && effect.top < b.bottom + 2 && effect.bottom > b.top)
             .map(() => label.dataset.agentId)
