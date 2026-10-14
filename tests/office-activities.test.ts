@@ -1,167 +1,119 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { officeActivities } from '../src/office-activities.ts'
-import { mapVisualState, rosterLayout, type VisualState } from '../src/state.ts'
-import { activityAnchor } from '../src/layout.ts'
-import { WALK_SECONDS, HANDOFF_SECONDS } from '../src/handoff.ts'
+import { rosterLayout, type VisualState } from '../src/state.ts'
+import { activityAnchor, deskBounds } from '../src/layout.ts'
+import { WALK_SECONDS } from '../src/handoff.ts'
 
-function setup(activity: 'idle' | 'working') {
-  const state = mapVisualState({ orchestrator: activity, developer: activity, 'browser-qa': activity, reviewer: activity })
-  const machine = officeActivities()
-  machine.sync(state)
-  return { state, machine }
+const roster = (count = 12) => rosterLayout()(Array.from({ length: count }, (_, i) => ({
+  id: `future-${i}`, name: `Agent ${i}`, role: 'general', status: 'idle', activity: 'idle' as const,
+})))
+function setup(state = roster()) {
+  const machine = officeActivities(); machine.sync(state)
+  return { machine, state }
 }
-test('occasional trips reach the room, pause with appropriate props, return, and limit occupancy', () => {
-  for (const activity of ['working'] as const) {
-    const { state, machine } = setup(activity)
-    const phases = new Set<string>(), props = new Set<string>()
-    let entered = false, returned = false
-    for (let step = 0; step < 1800; step++) {
-      if (step % 10 === 0) machine.sync(state)
-      const frames = state.map(a => machine.sample(a.id, 0.1, false))
-      assert.ok(frames.filter(f => f.phase !== 'desk').length <= 1)
-      for (const frame of frames) {
-        phases.add(frame.phase)
-        if (frame.prop) props.add(frame.prop)
-        if (frame.phase === 'pause') { assert.ok(frame.x > 500); entered = true }
-        if (entered && frame.phase === 'returning') returned = true
-      }
-    }
-    assert.deepEqual([...phases].sort(), ['desk', 'outbound', 'pause', 'returning'])
-    assert.deepEqual([...props], ['paper'])
-    assert.ok(entered && returned)
-  }
-})
-test('state changes remove stale props immediately and retrace smoothly; polling never restarts trips', () => {
-  for (const activity of ['idle', 'working'] as const) {
-    const { state, machine } = setup(activity)
-    let selected = '', previous = { x: 0, y: 0 }
-    for (let step = 0; step < 700 && !selected; step++) for (const a of state) {
-      const frame = machine.sample(a.id, 0.1, false)
-      if (frame.prop && frame.phase === 'pause') { selected = a.id; previous = frame; break }
-    }
-    assert.ok(selected)
-    machine.sync(state.map(a => ({ ...a, activity: activity === 'idle' ? 'working' : 'idle' })))
-    const next = machine.sample(selected, 0.1, false)
-    assert.equal(next.phase, 'returning')
-    assert.equal(next.prop, undefined)
-    assert.ok(Math.hypot(next.x - previous.x, next.y - previous.y) <= 4.21)
-  }
-})
-test('reduced motion and handoffs reset excursions; removal and expanded modules are supported', () => {
-  const { state, machine } = setup('working')
-  for (let i = 0; i < 400; i++) for (const a of state) machine.sample(a.id, 0.1, false)
-  for (const a of state) {
-    const frame = machine.sample(a.id, 1000, true)
-    assert.deepEqual({ x: frame.x, y: frame.y }, activityAnchor(a))
-    assert.equal(frame.phase, 'desk')
-    assert.equal(machine.sample(a.id, 1, false, true).prop, undefined)
-  }
-  machine.sync([])
-  const expanded = state.map(a => ({ ...a, row: a.row + 28 }))
-  machine.sync(expanded)
-  let entered = false
-  for (let i = 0; i < 800; i++) for (const a of expanded) {
-    const frame = machine.sample(a.id, 0.1, false)
-    if (frame.phase === 'pause') { assert.equal(frame.y, 448 + 184); entered = true }
-  }
-  assert.ok(entered)
-})
-
 function advance(machine: ReturnType<typeof officeActivities>, state: VisualState, seconds: number) {
   let frames = state.map(a => machine.sample(a.id, 0, false))
-  for (let i = 0; i < seconds * 10; i++) {
-    if (i % 10 === 0) machine.sync(state)
-    frames = state.map(a => machine.sample(a.id, 0.1, false))
-  }
+  for (let i = 0; i < seconds * 10; i++) frames = state.map(a => machine.sample(a.id, 0.1, false))
   return frames
 }
-
-test('coffee persists across extended idle polls; only the agent receiving work returns', () => {
-  const { state, machine } = setup('idle')
-  const gathered = advance(machine, state, 180)
-  assert.ok(gathered.every(f => f.phase === 'pause' && f.prop === 'cup'))
-  assert.deepEqual(advance(machine, state, 3600), gathered)
-  const working = state.map((a, i) => i === 1 ? { ...a, activity: 'working' as const } : a)
-  machine.sync(working)
-  const first = working.map(a => machine.sample(a.id, 0.1, false))
-  assert.equal(first[1].phase, 'returning')
-  assert.equal(first[1].prop, undefined)
-  assert.equal(first[1].working, true)
-  assert.ok(Math.hypot(first[1].x - gathered[1].x, first[1].y - gathered[1].y) <= 4.21)
-  for (const i of [0, 2, 3]) assert.deepEqual(first[i], gathered[i])
-  const returned = advance(machine, working, 25)
-  assert.equal(returned[1].phase, 'desk')
-  assert.equal(returned[1].working, true)
-  for (const i of [0, 2, 3]) assert.deepEqual(returned[i], gathered[i])
-})
-
-test('dynamic rosters gather with separated stable social positions in every studio', () => {
-  const layout = rosterLayout()
-  const agents = Array.from({ length: 40 }, (_, i) => ({ id: `new-agent-${i}`, name: `Agent ${i}`, role: 'general', status: 'idle', activity: 'idle' as const }))
-  const machine = officeActivities()
-  const initial = layout(agents.slice(0, 2))
-  machine.sync(initial)
-  const pair = advance(machine, initial, 180)
-  const state = layout(agents)
-  machine.sync(state)
-  const gathered = advance(machine, state, 240)
-  assert.ok(gathered.every(f => f.phase === 'pause'))
-  assert.deepEqual(gathered.slice(0, 2), pair)
-  for (let i = 0; i < gathered.length; i++) for (let j = i + 1; j < gathered.length; j++) {
-    assert.ok(Math.hypot(gathered[i].x - gathered[j].x, gathered[i].y - gathered[j].y) > 40)
+test('finite, varied idle visits are deterministic, asynchronous and collision-safe across 40 agents', () => {
+  const { machine, state } = setup(roster(40)), replay = officeActivities(); replay.sync(state)
+  const kinds = new Set<string>(), destinations = state.map(() => new Set<string>())
+  const departures = new Set<number>()
+  let previous = advance(machine, state, 0)
+  for (let step = 0; step < 6000; step++) {
+    if (step % 10 === 0) { machine.sync([...state].reverse()); replay.sync(state) }
+    const frames = state.map(a => machine.sample(a.id, 0.1, false))
+    assert.deepEqual(frames, state.map(a => replay.sample(a.id, 0.1, false)))
+    frames.forEach((f, i) => {
+      assert.ok(Math.hypot(f.x - previous[i].x, f.y - previous[i].y) <= 4.21)
+      if (f.phase === 'outbound' && previous[i].phase === 'desk') departures.add(step)
+      if (f.behaviour) kinds.add(f.behaviour)
+      if (f.phase === 'pause') destinations[i].add(`${f.x}:${f.y}`)
+      for (const seat of state) {
+        const b = deskBounds(seat)
+        assert.ok(!(f.x > b.x - 16 && f.x < b.x + b.width + 16 && f.y > b.y - 6 && f.y < b.y + b.height + 26))
+      }
+    })
+    previous = frames
   }
-  machine.sync([...state].reverse())
-  assert.deepEqual(state.map(a => machine.sample(a.id, 0, false)), gathered)
-  machine.sync(state.slice(1))
-  assert.deepEqual(advance(machine, state.slice(1), 60), gathered.slice(1))
+  assert.equal(kinds.size, 5)
+  assert.ok(destinations.every(d => d.size >= 3))
+  assert.ok(departures.size > 40)
 })
-
-test('handoff interruption takes precedence over coffee without disturbing other visitors', () => {
-  const { state, machine } = setup('idle')
-  const gathered = advance(machine, state, 180)
-  const courier = machine.sample(state[0].id, 0.1, false, true)
-  assert.equal(courier.phase, 'returning')
-  assert.equal(courier.prop, undefined)
-  for (let i = 1; i < state.length; i++) assert.deepEqual(machine.sample(state[i].id, 0.1, false), gathered[i])
-})
-
-test('reduced motion clears coffee travel and holds static functional work positions', () => {
-  const { state, machine } = setup('idle')
-  advance(machine, state, 180)
-  for (const a of state) {
-    const frame = machine.sample(a.id, 0.1, true)
-    assert.deepEqual({ x: frame.x, y: frame.y }, activityAnchor(a))
-    assert.equal(frame.phase, 'desk')
-    assert.equal(frame.prop, undefined)
-    assert.deepEqual(machine.sample(a.id, 3600, true), frame)
-  }
-  const working = state.map((a, i) => i === 0 ? { ...a, activity: 'working' as const } : a)
-  machine.sync(working)
-  assert.equal(machine.sample(state[0].id, 0.1, true).working, true)
-})
-
-test('interrupted coffee recipients reach every lounge seat home within the handoff walk window', () => {
-  const state = rosterLayout()(Array.from({ length: 12 }, (_, i) => ({
-    id: `recipient-${i}`, name: `Recipient ${i}`, role: 'general', status: 'idle', activity: 'idle' as const,
-  })))
-  for (const recipient of state) {
-    const machine = officeActivities()
-    machine.sync(state)
-    const gathered = advance(machine, state, 240)
-    assert.ok(gathered.every(frame => frame.phase === 'pause' && frame.prop === 'cup'))
-    const home = activityAnchor(recipient)
-    for (let step = 1; step <= HANDOFF_SECONDS * 60; step++) {
-      if (step % 60 === 0) machine.sync([...state].reverse())
-      for (const [i, agent] of state.entries()) {
-        const frame = machine.sample(agent.id, 1 / 60, false, agent.id === recipient.id)
-        if (agent.id !== recipient.id) { assert.deepEqual(frame, gathered[i]); continue }
+test('incoming workflow preempts any visit and reaches home within the walk window', () => {
+  for (const authoritative of [false, true]) {
+    const { machine, state } = setup()
+    advance(machine, state, 40)
+    for (const a of state) {
+      if (authoritative) machine.sync(state.map(b => ({ ...b, activity: b.id === a.id ? 'working' : b.activity })))
+      for (let i = 0; i <= WALK_SECONDS * 10; i++) {
+        const frame = machine.sample(a.id, 0.1, false, !authoritative)
         assert.equal(frame.prop, undefined)
-        if (step === 1) assert.equal(frame.phase, 'returning')
-        if (step >= WALK_SECONDS * 60) {
-          assert.ok(Math.hypot(frame.x - home.x, frame.y - home.y) < 1, `${agent.id} absent at handoff step ${step}`)
-        }
+        if (i === WALK_SECONDS * 10) assert.deepEqual({ x: frame.x, y: frame.y }, activityAnchor(a))
       }
     }
   }
 })
+test('active work stays anchored and reduced motion suppresses all decorative travel', () => {
+  const { machine, state } = setup()
+  advance(machine, state, 40)
+  for (const a of state) assert.deepEqual(machine.sample(a.id, 1, true), { ...activityAnchor(a), dx: 0, dy: 0, phase: 'desk', working: false })
+  const working = state.map(a => ({ ...a, activity: 'working' as const }))
+  machine.sync(working)
+  for (const f of advance(machine, working, 200)) { assert.equal(f.phase, 'desk'); assert.equal(f.working, true) }
+})
+test('roster removal and polling preserve the remaining agents independent clocks', () => {
+  const { machine, state } = setup(), control = officeActivities(); control.sync(state)
+  advance(machine, state, 50); advance(control, state, 50)
+  machine.sync(state.slice(1))
+  assert.deepEqual(advance(machine, state.slice(1), 30), advance(control, state, 30).slice(1))
+})
+
+test('off-desk couriers retrace all idle origins and deliver without crossing furniture', async () => {
+  const { deliveryPose } = await import('../src/handoff.ts')
+  const { machine, state } = setup(roster(12))
+  const behaviours = new Set<string>()
+  for (let step = 0; step < 6000; step++) {
+    const frames = state.map(a => machine.sample(a.id, 0.05, false))
+    if (step % 37) continue
+    for (const [i, source] of state.entries()) {
+      const origin = frames[i], approach = machine.returnPath(source.id)
+      if (origin.behaviour) behaviours.add(origin.behaviour)
+      const target = state[(i + 3) % state.length]
+      let previous = deliveryPose(0, source, target, approach)
+      assert.equal(previous.x, origin.x)
+      assert.equal(previous.y + 44, origin.y)
+      for (let tick = 1; tick <= 220; tick++) {
+        const pose = deliveryPose(tick * 0.05, source, target, approach)
+        assert.ok(Math.hypot(pose.x - previous.x, pose.y - previous.y) < 45, 'no teleport at segment or phase boundaries')
+        for (const seat of state) {
+          const b = deskBounds(seat), feet = pose.y + 44
+          assert.ok(!(pose.x > b.x - 16 && pose.x < b.x + b.width + 16 && feet > b.y - 6 && feet < b.y + b.height + 26), 'route clears desk exclusion')
+        }
+        previous = pose
+      }
+      assert.equal(previous.x, activityAnchor(source).x)
+      assert.equal(previous.y + 44, activityAnchor(source).y)
+    }
+  }
+  assert.equal(behaviours.size, 5)
+})
+
+for (const count of [6, 12, 40]) {
+  test(`${count} idle agents maintain separated pause targets over 600 seconds at 50ms`, () => {
+    const { machine, state } = setup(roster(count))
+    let pairs = 0
+    for (let step = 0; step < 12000; step++) {
+      const paused = state.map(a => machine.sample(a.id, 0.05, false)).filter(f => f.phase === 'pause')
+      for (let i = 0; i < paused.length; i++) for (let j = i + 1; j < paused.length; j++) {
+        pairs++
+        const a = paused[i], b = paused[j]
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 40, `separation at step ${step}: ${JSON.stringify([a, b])}`)
+        assert.ok(Math.abs(a.x - b.x) >= 20 || Math.abs(a.y - b.y) >= 20, 'no overlapping pause frame')
+      }
+    }
+    assert.ok(pairs > 0)
+  })
+}

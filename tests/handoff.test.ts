@@ -304,3 +304,21 @@ for (const [ordering, createdAt, qualifies] of [
     }
   })
 }
+
+test('each queued singleton replay has a unique stable activation, including after clear', () => {
+  const queue = handoffQueue()
+  const event = { source: 'orchestrator', target: 'developer', taskId: 'DEMO-1', title: 'Replay' }
+  for (const reduced of [false, true]) {
+    queue.push(event, 0)
+    queue.push(event, 0)
+    const first = queue.advance(0, reduced)!
+    assert.equal(queue.advance(50, reduced)!.activation, first.activation)
+    const next = queue.advance(reduced ? 3000 : 11000, reduced)!
+    assert.equal(next.event, first.event)
+    assert.notEqual(next.activation, first.activation)
+    queue.clear()
+    queue.push(event, 0)
+    assert.notEqual(queue.advance(0, reduced)!.activation, next.activation)
+    queue.clear()
+  }
+})

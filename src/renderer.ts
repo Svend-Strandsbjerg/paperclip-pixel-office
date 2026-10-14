@@ -1,8 +1,10 @@
+import { activityAnchor } from './layout'
+import { paintWorkItem, workItems } from './work-items'
 import { paintGhost, paintStudio } from './art'
 import { deliveryPose, handoffQueue, type Handoff } from './handoff'
 import { ambientMotion } from './ambient'
 import { ghostMotion } from './ghost-motion'
-import { paintWorkActivity, workActivities } from './work-activities'
+import { ACTIVITY_PRESENTATION, paintWorkActivity, workActivities, type ActivityProfile } from './work-activities'
 import type { VisualState } from './state'
 import { sceneSize } from './scene'
 import { studioViewport } from './studio-viewport'
@@ -10,11 +12,14 @@ import { officeActivities, paintCarriedItem } from './office-activities'
 import { startGameLoop } from './vendor/pixel-agents/office/engine/gameLoop'
 
 /** The renderer receives visual state only. It owns no provider, networking or commands. */
-export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState) {
+export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState, onActivity?: (id: string, profile: ActivityProfile) => void) {
   let state = initialState
   let elapsed = 0
   let frameDelta = 0
   const ghosts = ghostMotion()
+  const items = workItems()
+  const displayedProfiles = new Map<string, ActivityProfile>()
+  let placedActivation: number | undefined
   const activities = workActivities()
   activities.sync(state)
   const excursions = officeActivities()
@@ -28,11 +33,11 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   let pixelRatio = 1
   let renderScale = 1
   let geometry = ''
-  let handoffOrigin = { x: 0, y: 0 }
-  let active: { event: Handoff; seconds: number } | undefined
+  let handoffApproach: { x: number; y: number }[] = []
+  let active: { event: Handoff; seconds: number; activation: number } | undefined
   const participant = (id: string) => state.find(a => a.id === id || a.specialist === id)
   const hasParticipants = (event: Handoff) => !!participant(event.source) && !!participant(event.target)
-  const travelPose = (event: Handoff, seconds: number) => deliveryPose(seconds, participant(event.source)!, participant(event.target)!)
+  const travelPose = (event: Handoff, seconds: number) => deliveryPose(seconds, participant(event.source)!, participant(event.target)!, handoffApproach)
   const queue = handoffQueue()
   const bubble = document.createElement('div')
   bubble.className = 'task-bubble'
@@ -43,11 +48,11 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
   function updateHandoff() {
     if (document.hidden) queue.clear()
     const next = queue.advance(performance.now(), motion.matches)
-    if (next && next.event !== active?.event) {
+    if (next && next.activation !== active?.activation) {
       const source = participant(next.event.source)
       if (source) {
-        const origin = excursions.sample(source.id, 0, motion.matches)
-        handoffOrigin = { x: origin.x - (source.col * 16 + 8), y: origin.y - (source.row * 16 + 52) }
+        if (next.event.kind === 'result') items.pickup(source.id, next.event.taskId)
+        handoffApproach = excursions.returnPath(source.id)
       }
       bubble.textContent = next.event.kind === 'result' ? `Result ${next.event.taskId} · ${participant(next.event.source)?.name} → Orchestrator — ${next.event.title}` : (next.event.context === 'rework' || next.event.target !== 'developer') ? `${next.event.context === 'rework' ? 'Rework' : next.event.target === 'reviewer' ? 'Review' : 'QA'} ${next.event.taskId}${next.event.sha ? ` @ ${next.event.sha.slice(0, 7)}` : ''} — ${next.event.title}` : `${next.event.taskId} — ${next.event.title}`
       bubble.dataset.target = next.event.target
@@ -56,6 +61,10 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
     if (next && !hasParticipants(next.event)) { queue.clear(); active = undefined; bubble.hidden = true; return }
     active = next
     const phase = active ? (motion.matches ? 'bubble' : travelPose(active.event, active.seconds).phase) : 'rest'
+    if (active && phase === 'bubble' && placedActivation !== active.activation) {
+      items.place(participant(active.event.target)!.id, active.event.taskId, elapsed)
+      placedActivation = active.activation
+    }
     if (canvas.dataset.handoff !== phase) canvas.dataset.handoff = phase
     const hidden = phase !== 'bubble'
     if (bubble.hidden !== hidden) bubble.hidden = hidden
@@ -104,26 +113,36 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
         const offset = ambient.sample(agent.id, elapsed, frameDelta, agent.activity === 'idle' && excursion.phase === 'desk', motion.matches, !!active)
         const moving = visitor && visitor.phase !== 'bubble'
         const pose = { ...ghosts.sample(agent.id, elapsed, frameDelta, motion.matches, moving ? visitor.dx : excursion.dx || offset.dx, moving ? visitor.dy : excursion.dy || offset.dy) }
-        const settle = visitor && active ? Math.max(0, 1 - active.seconds / 2) : 0
-        const x = handoffOrigin.x * settle + (visitor?.x ?? excursion.x) + offset.x
-        const y = handoffOrigin.y * settle + (visitor ? visitor.y + 44 : excursion.y) + offset.y
+        const x = (visitor?.x ?? excursion.x) + offset.x
+        const y = (visitor ? visitor.y + 44 : excursion.y) + offset.y
         if (agent.activity === 'working' && !motion.matches && !active && (excursion.phase === 'desk' || excursion.phase === 'pause')) {
           pose.pitch += Math.sin(elapsed * 2.4) * 0.3
           pose.lift += Math.sin(elapsed * 4.8) * 0.7
         }
-        paintGhost(ctx, agent, x, y, pose)
+        const atDesk = excursion.phase === 'desk' && !interrupted
+        const item = items.sample(agent.id, agent.activity === 'working', atDesk, elapsed)
+        const activity = activities.sample(agent.id, frameDelta, motion.matches,
+          !atDesk || (!!item && item.phase === 'waiting'))
+        if (activity && displayedProfiles.get(agent.id) !== activity.profile) {
+          displayedProfiles.set(agent.id, activity.profile)
+          onActivity?.(agent.id, activity.profile)
+        }
+        if (agent.activity !== 'working') displayedProfiles.delete(agent.id)
+        paintGhost(ctx, agent, x, y, pose, activity ? ACTIVITY_PRESENTATION[activity.profile].accessory : undefined)
         if (!interrupted) paintCarriedItem(ctx, excursion, pose.lift)
-        const activity = activities.sample(agent.id, frameDelta, motion.matches, interrupted || Math.hypot(offset.x, offset.y) > 0.5)
-        if (activity && (excursion.phase === 'desk' || excursion.phase === 'pause')) paintWorkActivity(ctx, { x, y }, activity, 3)
-        if (courier === agent.id && (motion.matches || travel?.carrying)) {
-          // Pixel document is attached to the courier, never ambient movement.
-          ctx.fillStyle = '#596575'
-          ctx.fillRect((x + 8) * 3, (y - 18 + pose.lift) * 3, 24, 30)
-          ctx.fillStyle = '#fff4d6'
-          ctx.fillRect((x + 9) * 3, (y - 17 + pose.lift) * 3, 18, 24)
-          ctx.fillStyle = '#8794a0'
-          ctx.fillRect((x + 10) * 3, (y - 14 + pose.lift) * 3, 12, 3)
-          ctx.fillRect((x + 10) * 3, (y - 11 + pose.lift) * 3, 9, 3)
+        const anchor = activityAnchor(agent)
+        if (item) paintWorkItem(ctx, anchor, item.phase === 'processing')
+        if (activity) paintWorkActivity(ctx, anchor, activity, 3)
+        if (courier === agent.id && (motion.matches ? placedActivation !== active?.activation : travel?.phase === 'outbound')) {
+          // The same card shape moves from hand to the workstation, or from
+          // the completed work anchor into the returning specialist's hand.
+          const hand = { x: x - 26, y: y + 11 + pose.lift }
+          const target = activityAnchor(participant(active!.event.target)!)
+          const pickup = active!.event.kind === 'result' ? Math.max(0, 1 - active!.seconds / 0.5) : 0
+          const placement = motion.matches ? 1 : Math.max(0, Math.min(1, (active!.seconds - 3.5) / 0.5))
+          const card = pickup > 0 ? { x: hand.x + (anchor.x - hand.x) * pickup, y: hand.y + (anchor.y - hand.y) * pickup }
+            : { x: hand.x + (target.x - hand.x) * placement, y: hand.y + (target.y - hand.y) * placement }
+          paintWorkItem(ctx, card, active!.event.kind === 'result')
         }
       }
       for (const agent of state) {
@@ -136,5 +155,5 @@ export function mountOffice(canvas: HTMLCanvasElement, initialState: VisualState
       ctx.restore()
     },
   })
-  return { setState: (next: VisualState) => { state = next; activities.sync(state); excursions.sync(state); ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); observer.disconnect(); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
+  return { setState: (next: VisualState) => { state = next; items.sync(state.map(a => a.id)); for (const id of displayedProfiles.keys()) if (!state.some(a => a.id === id)) displayedProfiles.delete(id); activities.sync(state); excursions.sync(state); ambient.sync(state); ghosts.sync(state.map(agent => agent.id)); resize(); if (active && !hasParticipants(active.event)) { queue.clear(); active = undefined; bubble.hidden = true } }, handoff: (event: Handoff) => { if (!document.hidden && hasParticipants(event)) queue.push(event, performance.now()) }, destroy: () => { stop(); observer.disconnect(); window.removeEventListener('resize', resize); document.removeEventListener('visibilitychange', onVisibility); bubble.remove() } }
 }

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mountOffice } from '../src/renderer.ts'
 import { demoHandoff } from '../src/handoff.ts'
-import { seatPosition } from '../src/layout.ts'
+import { activityAnchor, seatPosition } from '../src/layout.ts'
 import { studioViewport } from '../src/studio-viewport.ts'
 import { sceneSize } from '../src/scene.ts'
 import { mapVisualState } from '../src/state.ts'
@@ -18,11 +18,12 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   let lightingPaints = 0
   const rotations: number[] = [], translations: number[][] = [], images: unknown[] = []
   const documents: number[][] = []
+  const cardHeaders: { color: string; x: number; y: number }[] = []
   const activityGraphics: number[][] = []
   const media = { matches: false }
   const bubble = { hidden: true, textContent: '', dataset: {}, style: { setProperty() {} }, setAttribute() {}, remove() {} }
   const ctx = new Proxy({
-    fillRect: (...args: number[]) => { if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args); if (['#eef0d9', '#98c4d0'].includes((ctx as unknown as CanvasRenderingContext2D).fillStyle as string)) activityGraphics.push(args) },
+    fillRect: (...args: number[]) => { if (args[2] === 42 && args[3] === 6) cardHeaders.push({ color: (ctx as unknown as CanvasRenderingContext2D).fillStyle as string, x: args[0], y: args[1] }); if ((ctx as unknown as CanvasRenderingContext2D).fillStyle === '#fff4d6') documents.push(args); if (['#eef0d9', '#98c4d0'].includes((ctx as unknown as CanvasRenderingContext2D).fillStyle as string)) activityGraphics.push(args) },
     roundRect: () => { environmentPaints++ },
     createLinearGradient: () => ({ addColorStop() {} }),
     rotate: (angle: number) => rotations.push(angle),
@@ -66,7 +67,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   office.setState(state)
   assert.equal(environmentPaints, painted)
   frame(1)
-  assert.equal(documents.filter(rect => rect[2] === 18).length, 0)
+  assert.equal(documents.filter(rect => rect[2] === 42).length, 0)
   assert.ok(activityGraphics.length > 0)
   const first = translations.map(v => [...v])
   const originalImages = [...images]
@@ -83,7 +84,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   for (let time = 49; time < 2000; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'outbound')
   assert.equal(activityGraphics.length, 0) // working recipient hides immediately
-  assert.equal(documents.filter(rect => rect[2] === 18).length, 1)
+  assert.equal(documents.filter(rect => rect[2] === 42).length, 1)
   assert.ok(rotations[0] > 0)
   for (let time = 2000; time < 5100; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'bubble')
@@ -92,7 +93,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   for (let time = 5100; time < 12000; time += 16) frame(time)
   assert.equal(canvas.dataset.handoff, 'rest')
   assert.ok(activityGraphics.length > 0) // still-working recipient resumes
-  assert.equal(documents.filter(rect => rect[2] === 18).length, 0)
+  assert.equal(documents.filter(rect => rect[2] === 42).length, 1) // delivered item remains at work anchor
   assert.ok(Math.abs(rotations[0]) < 0.001)
   media.matches = true
   frame(12016)
@@ -122,22 +123,64 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     const sourceIndex = source === 'dynamic-agent' ? 4 : state.findIndex(a => a.id === source)
     const sourcePosition = [...translations[sourceIndex * 2]]
     for (let t = started + 16; t < started + 2000; t += 16) frame(t)
-    assert.equal(documents.filter(rect => rect[2] === 18).length, 1)
+    assert.ok(documents.some(rect => rect[2] === 42))
     assert.notDeepEqual(translations[sourceIndex * 2], sourcePosition)
     for (let t = now + 16; t < started + 5000; t += 16) frame(t)
     assert.match(bubble.textContent, /^Result DEV-99/)
     for (let t = now + 16; t < started + 8500; t += 16) frame(t)
     assert.equal(canvas.dataset.handoff, 'returning')
-    assert.equal(documents.filter(rect => rect[2] === 18).length, 0)
+    assert.ok(documents.some(rect => rect[0] === (104 + 35) * 3 && rect[1] === (148 - 28) * 3)) // result placed at recipient
     for (let t = now + 16; t < started + 12000; t += 16) frame(t)
     assert.equal(canvas.dataset.handoff, 'rest')
     assert.ok(Math.abs(rotations[sourceIndex]) < 0.001)
   }
+  // QA-3: an older completion carries its own result without taking the
+  // newer open task's workstation card (normal and reduced motion).
+  const deskCard = (id: string) => {
+    const anchor = activityAnchor(state.find(agent => agent.id === id)!)
+    return documents.some(rect => rect[0] === (anchor.x + 35) * 3 && rect[1] === (anchor.y - 28) * 3 && rect[2] === 42)
+  }
+  const advance = (milliseconds: number) => {
+    const end = now + milliseconds
+    while (now < end) frame(Math.min(now + 50, end))
+  }
+  for (const reduced of [false, true]) {
+    media.matches = reduced
+    for (const taskId of ['TASK-1', 'TASK-2']) {
+      office.handoff({ ...demoHandoff, taskId })
+      advance(11200)
+      assert.equal(canvas.dataset.handoff, 'rest')
+      assert.ok(deskCard('developer'))
+    }
+    office.handoff({ source: 'developer', target: 'orchestrator', kind: 'result', taskId: 'TASK-1', title: 'Older work' })
+    advance(900)
+    assert.ok(deskCard('developer'))
+    if (!reduced) {
+      assert.equal(canvas.dataset.handoff, 'outbound')
+      assert.ok(documents.some(rect => rect[2] === 42 && rect[0] !== (activityAnchor(state[0]).x + 35) * 3 && rect[0] !== (activityAnchor(state[1]).x + 35) * 3))
+    }
+    advance(3200)
+    assert.match(bubble.textContent, /^Result TASK-1 /)
+    assert.ok(deskCard('orchestrator'))
+    assert.ok(deskCard('developer'))
+    advance(7100)
+    assert.equal(canvas.dataset.handoff, 'rest')
+    assert.ok(deskCard('developer'))
+    office.handoff({ source: 'developer', target: 'orchestrator', kind: 'result', taskId: 'TASK-2', title: 'Newer work' })
+    advance(900)
+    assert.equal(deskCard('developer'), false)
+    advance(3200)
+    assert.match(bubble.textContent, /^Result TASK-2 /)
+    assert.ok(deskCard('orchestrator'))
+    advance(7100)
+    assert.equal(deskCard('developer'), false)
+  }
+  media.matches = false
   // Begin a delivery during an actual excursion; the rendered courier must not
   // jump back to its desk when deliveryPose takes over its base position.
   for (let i = 0; i < 4000 && Math.abs(translations[0][0] - 104 * 3) < 12; i++) frame(now + 16)
   assert.ok(Math.abs(translations[0][0] - 104 * 3) >= 12)
-  // Let all idle visitors settle before checking a handoff in a gathered group.
+  // Independent idle visits continue while another agent delivers work.
   for (let i = 0; i < 15000; i++) frame(now + 16)
   const bystanders = [2, 3].map(i => [...translations[i * 2]])
   const wandering = [...translations[0]]
@@ -146,9 +189,23 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   assert.ok(Math.hypot(translations[0][0] - wandering[0], translations[0][1] - wandering[1]) < 3)
   for (let i = 0; i < 150; i++) frame(now + 16)
   for (const [index, agentIndex] of [2, 3].entries()) {
-    assert.equal(translations[agentIndex * 2][0], bystanders[index][0])
-    assert.ok(Math.abs(translations[agentIndex * 2][1] - bystanders[index][1]) < 12)
+    assert.ok(Math.hypot(translations[agentIndex * 2][0] - bystanders[index][0], translations[agentIndex * 2][1] - bystanders[index][1]) < 330)
   }
+
+  // RV-2: replay the exact singleton while the first off-desk trip is active.
+  office.handoff(demoHandoff)
+  advance(8600) // first trip ends; the queued replay starts from the home desk
+  assert.equal(canvas.dataset.handoff, 'outbound')
+  assert.ok(Math.abs(translations[0][0] - 104 * 3) < 3, 'replay must capture the current home origin')
+  const replayOrigin = [...translations[0]]
+  advance(50)
+  assert.ok(Math.hypot(translations[0][0] - replayOrigin[0], translations[0][1] - replayOrigin[1]) < 25, 'replay glides without a jump')
+  advance(3900)
+  cardHeaders.length = 0
+  advance(50)
+  assert.equal(canvas.dataset.handoff, 'bubble')
+  const recipientAnchor = activityAnchor(state.find(agent => agent.id === 'developer')!)
+  assert.ok(cardHeaders.some(header => header.color === '#d7aa66' && header.x === (recipientAnchor.x + 35) * 3 && header.y === (recipientAnchor.y - 28) * 3), 'replay places a fresh waiting card instead of retaining the processing card')
 
   // Container-only resizing and monitor DPI changes both rebuild the backing store.
   canvas.parentElement.parentElement.clientWidth = 350

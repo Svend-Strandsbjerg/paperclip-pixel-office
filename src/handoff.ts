@@ -40,7 +40,8 @@ export const PENDING_LIMIT = 2
 export const MAX_WAIT_MS = 12000
 export function handoffQueue() {
   let pending: { event: Handoff; received: number }[] = []
-  let active: { event: Handoff; started: number } | undefined
+  let activation = 0
+  let active: { event: Handoff; started: number; activation: number } | undefined
   return {
     push(event: Handoff, now: number) {
       pending.push({ event, received: now })
@@ -51,8 +52,8 @@ export function handoffQueue() {
       pending = pending.filter(item => now - item.received < MAX_WAIT_MS)
       const duration = (reducedMotion ? BUBBLE_SECONDS : HANDOFF_SECONDS) * 1000
       if (active && now - active.started >= duration) active = undefined
-      if (!active && pending.length) active = { event: pending.shift()!.event, started: now }
-      return active ? { event: active.event, seconds: (now - active.started) / 1000 } : undefined
+      if (!active && pending.length) active = { event: pending.shift()!.event, started: now, activation: ++activation }
+      return active ? { event: active.event, activation: active.activation, seconds: (now - active.started) / 1000 } : undefined
     },
   }
 }
@@ -81,10 +82,13 @@ export function completionTracker() {
 }
 
 /** Layout's center lane connects modules, with room beside the recipient. */
-export function deliveryPose(seconds: number, source: { col: number; row: number }, target: { col: number; row: number }) {
+export function deliveryPose(seconds: number, source: { col: number; row: number }, target: { col: number; row: number }, approach: readonly { x: number; y: number }[] = []) {
   const aisle = (seat: { col: number; row: number }) => [208, seat.row * 16 + 8]
-  const points = [[source.col * 16 + 8, source.row * 16 + 8], aisle(source), aisle(target), [target.col * 16 + 8 + (target.col < 12 ? 48 : -48), target.row * 16 + 8]]
+  const homeRoute = [[source.col * 16 + 8, source.row * 16 + 8], aisle(source), aisle(target), [target.col * 16 + 8 + (target.col < 12 ? 48 : -48), target.row * 16 + 8]]
   const returning = seconds >= WALK_SECONDS + BUBBLE_SECONDS
+  // Idle paths use activity-anchor coordinates; delivery poses sit 44px above them.
+  // Only outbound retraces the idle visit. The courier returns to its permanent desk.
+  const points = returning ? homeRoute : [...approach.map(p => [p.x, p.y - 44]), ...homeRoute]
   const phase = seconds < WALK_SECONDS ? 'outbound' : returning ? 'returning' : 'bubble'
   const progress = phase === 'bubble' ? 1 : Math.min(1, Math.max(0, (seconds - (returning ? WALK_SECONDS + BUBBLE_SECONDS : 0)) / WALK_SECONDS))
   const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]))
