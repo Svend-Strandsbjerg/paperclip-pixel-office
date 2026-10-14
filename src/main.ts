@@ -7,6 +7,7 @@ import './style.css'
 import { pollOffice } from './provider'
 import { demoSnapshot, mapVisualState, rosterLayout, type DemoMode } from './state'
 import { mountOffice } from './renderer'
+import { workstationLabel } from './layout'
 import { sceneSize } from './scene'
 import license from '../third_party/pixel-agents-LICENSE.txt?raw'
 
@@ -54,8 +55,9 @@ function showSnapshot(snapshot: unknown, agents?: RosterAgent[]) {
     }
     const { card, label } = elements
     roster.append(card); labels.append(label)
-    label.style.left = `${(agent.col * 16 + 8) / width * 100}%`
-    label.style.top = `${(agent.row * 16 - 26) / height * 100}%`
+    const labelAnchor = workstationLabel(agent)
+    label.style.left = `${labelAnchor.x / width * 100}%`
+    label.style.top = `${labelAnchor.y / height * 100}%`
     const name = agent.identity?.name ?? agent.name
     label.querySelector('strong')!.textContent = name
     label.title = name

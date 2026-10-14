@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { officeLayout, workspacePad, activityAnchor, type Rect } from '../src/layout'
+import { officeLayout, workspacePad, activityAnchor, workstationLabel, deskBounds, type Rect } from '../src/layout'
 import { rosterLayout, type RosterAgent } from '../src/state'
 import { sharedDecorBounds, studioVariant } from '../src/environment'
 import { deliveryPose } from '../src/handoff'
@@ -25,15 +25,29 @@ for (const n of [1, 4, 5, 6, 10, 12, 24, 40]) test(`${n} agents have determinist
     assert.ok(b.x >= m.workspaceRight && b.x + b.width <= m.x + m.width)
     assert.ok(b.y >= m.y && b.y + b.height <= m.y + m.height)
   }
-  const envelopes = state.map(a => { const p = activityAnchor(a); return { x: p.x - 24, y: p.y - 36, width: 96, height: 56 } })
+  // Includes 32px ghost artwork with hover/tilt and work props up to 34px above home.
+  const envelopes = state.map(a => { const p = activityAnchor(a); return { x: p.x - 24, y: p.y - 34, width: 96, height: 54 } })
   envelopes.forEach((r, i) => {
     const module = layout.modules[Math.floor(i / 6)]
     assert.ok(r.x >= module.x && r.x + r.width <= module.workspaceRight)
     assert.ok(r.y >= module.y && r.y + r.height <= module.y + module.height)
     for (const furniture of [...layout.furniture, ...decoration]) assert.equal(overlaps(r, furniture), false)
     for (let j = 0; j < i; j++) assert.equal(overlaps(r, envelopes[j]), false)
-    const label = { x: state[i].col * 16 + 8 - 75, y: state[i].row * 16 - 50, width: 150, height: 24 }
-    for (const envelope of envelopes) assert.equal(overlaps(label, envelope), false)
+    const anchor = activityAnchor(state[i]), name = workstationLabel(state[i])
+    assert.equal(name.x, anchor.x)
+    assert.equal(anchor.y - (deskBounds(state[i]).y + deskBounds(state[i]).height), 34)
+    assert.ok(anchor.y < state[i].row * 16 + 52, 'home is closer than the previous anchor')
+    // Labels retain CSS pixel dimensions as the scene scales on desktop/mobile.
+    for (const scale of [1.15, 1.5, 2]) {
+      const label = { x: name.x - 75 / scale, y: name.y, width: 150 / scale, height: 26 / scale }
+      assert.ok(label.y - (anchor.y + 6) <= 16, 'label is immediately below its own ghost')
+      for (const envelope of envelopes) assert.equal(overlaps(label, envelope), false)
+      for (const furniture of layout.furniture) assert.equal(overlaps(label, furniture), false)
+      for (const other of state) if (other !== state[i]) {
+        const neighbour = activityAnchor(other)
+        assert.ok(Math.hypot(name.x - anchor.x, name.y - anchor.y) < Math.hypot(name.x - neighbour.x, name.y - neighbour.y))
+      }
+    }
   })
   for (const source of state) for (const target of state) if (source !== target) {
     for (let t = 0; t <= 11; t += .1) {

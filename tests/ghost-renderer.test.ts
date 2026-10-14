@@ -98,7 +98,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   media.matches = true
   frame(12016)
   assert.ok(rotations.every(angle => angle === 0))
-  assert.deepEqual(translations[0], [104 * 3, (104 + 44 - 10) * 3])
+  assert.deepEqual(translations[0], [activityAnchor(state[0]).x * 3, (activityAnchor(state[0]).y - 10) * 3])
   const staticActivity = activityGraphics.map(v => [...v])
   frame(12024)
   assert.deepEqual(activityGraphics, staticActivity)
@@ -112,7 +112,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
   media.matches = false
   frame(12048)
   assert.equal(images.length, 5)
-  assert.notEqual(translations[8][1], (18 * 16 + 8 + 44 - 10) * 3)
+  assert.notEqual(translations[8][1], (activityAnchor({ col: 6, row: 18 }).y - 10) * 3)
   assert.equal(allocations, 1)
   // Each specialist and a future roster member is the result courier.
   for (const source of ['developer', 'browser-qa', 'reviewer', 'dynamic-agent']) {
@@ -129,7 +129,7 @@ test('renderer floats idle/working native ghosts, glides handoffs, settles, and 
     assert.match(bubble.textContent, /^Result DEV-99/)
     for (let t = now + 16; t < started + 8500; t += 16) frame(t)
     assert.equal(canvas.dataset.handoff, 'returning')
-    assert.ok(documents.some(rect => rect[0] === (104 + 35) * 3 && rect[1] === (148 - 28) * 3)) // result placed at recipient
+    assert.ok(documents.some(rect => rect[0] === (activityAnchor(state[0]).x + 35) * 3 && rect[1] === (activityAnchor(state[0]).y - 28) * 3)) // result placed at recipient
     for (let t = now + 16; t < started + 12000; t += 16) frame(t)
     assert.equal(canvas.dataset.handoff, 'rest')
     assert.ok(Math.abs(rotations[sourceIndex]) < 0.001)

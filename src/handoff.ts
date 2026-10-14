@@ -1,3 +1,5 @@
+import { activityAnchor } from './layout'
+
 /** Visual-only payload: no Paperclip identities or activity overrides. */
 export type Destination = 'developer' | 'browser-qa' | 'reviewer'
 export type Task = { taskId: string; title: string; target?: Destination; sha?: string; context?: 'rework' }
@@ -83,8 +85,8 @@ export function completionTracker() {
 
 /** Layout's center lane connects modules, with room beside the recipient. */
 export function deliveryPose(seconds: number, source: { col: number; row: number }, target: { col: number; row: number }, approach: readonly { x: number; y: number }[] = []) {
-  const aisle = (seat: { col: number; row: number }) => [208, seat.row * 16 + 8]
-  const homeRoute = [[source.col * 16 + 8, source.row * 16 + 8], aisle(source), aisle(target), [target.col * 16 + 8 + (target.col < 12 ? 48 : -48), target.row * 16 + 8]]
+  const home = activityAnchor(source), destination = activityAnchor(target)
+  const homeRoute = [[home.x, home.y - 44], [208, home.y - 44], [208, destination.y - 44], [destination.x + (target.col < 12 ? 48 : -48), destination.y - 44]]
   const returning = seconds >= WALK_SECONDS + BUBBLE_SECONDS
   // Idle paths use activity-anchor coordinates; delivery poses sit 44px above them.
   // Only outbound retraces the idle visit. The courier returns to its permanent desk.

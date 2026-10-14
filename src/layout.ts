@@ -7,7 +7,12 @@ export function seatPosition(slot: number) {
   return { col: slot % 2 ? 19 : 6, row: 6 + Math.floor(slot % MODULE_CAPACITY / 2) * 8 + Math.floor(slot / MODULE_CAPACITY) * (MODULE_HEIGHT / 16) }
 }
 export function activityAnchor(seat: { col: number; row: number }) {
-  return { x: seat.col * 16 + 8, y: seat.row * 16 + 52 }
+  return { x: seat.col * 16 + 8, y: seat.row * 16 + 48 }
+}
+/** Label top sits just below the hover/shadow envelope, centered on its home. */
+export function workstationLabel(seat: { col: number; row: number }) {
+  const home = activityAnchor(seat)
+  return { x: home.x, y: home.y + 22 }
 }
 export function officeLayout(state: readonly { col: number; row: number }[]) {
   const count = Math.max(1, ...state.map(a => Math.floor((a.row - 6) / (MODULE_HEIGHT / 16)) + 1))
