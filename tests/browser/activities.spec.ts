@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { activityAnchor } from '../../src/layout'
 
 test('idle life, delivered card continuity, activity labels and reduced motion', async ({ page }) => {
   await page.addInitScript(() => {
@@ -23,10 +24,10 @@ test('idle life, delivered card continuity, activity labels and reduced motion',
   await advance(4.2)
   await expect(page.locator('canvas')).toHaveAttribute('data-handoff', 'bubble')
   // Placed document occupies the developer's activity anchor even while idle.
-  const card = () => page.locator('canvas').evaluate(c => {
+  const card = () => page.locator('canvas').evaluate((c, home) => {
     const scale = c.width / 640
-    return Array.from(c.getContext('2d')!.getImageData(348 * scale, 128 * scale, 10 * scale, 10 * scale).data)
-  })
+    return Array.from(c.getContext('2d')!.getImageData((home.x + 36) * scale, (home.y - 27) * scale, 10 * scale, 10 * scale).data)
+  }, activityAnchor({ col: 19, row: 6 }))
   const waiting = await card()
   expect(waiting.some((v, i) => i % 4 === 0 && v > 240)).toBe(true)
   await advance(15)

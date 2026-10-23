@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test'
+import { activityAnchor } from '../../src/layout'
 
 const roles = ['Orchestrator', 'Developer', 'Browser QA', 'Reviewer']
 test('production office renders four stable roles and demonstrates every state', async ({ page, baseURL }) => {
@@ -165,14 +166,15 @@ test('live hydration stays quiet; new delegation animates once; reload and faile
 
 // Reduced motion places a persistent card at the recipient while ghosts stay still.
 async function reducedMotionFrame(canvas: Locator, target = 'developer') {
-  return canvas.evaluate((node: HTMLCanvasElement, recipient: string) => {
+  const home = activityAnchor({ col: target === 'browser-qa' ? 6 : 19, row: target === 'developer' ? 6 : 14 })
+  return canvas.evaluate((node: HTMLCanvasElement, { recipient, home }) => {
     const copy = document.createElement('canvas')
     copy.width = node.width; copy.height = node.height
     const context = copy.getContext('2d')!
     context.drawImage(node, 0, 0)
     const scale = node.width / 640
-    const x = recipient === 'browser-qa' ? 138 : 346
-    const y = recipient === 'developer' ? 119 : 247
+    const x = home.x + 34
+    const y = home.y - 29
     // Round the mask outward and composite expected pixels over the scene to
     // include antialiased edges at fractional backing-buffer scales.
     const left = Math.floor(x * scale), top = Math.floor(y * scale)
@@ -186,7 +188,7 @@ async function reducedMotionFrame(canvas: Locator, target = 'developer') {
     const expectedDocumentPixels = Array.from(context.getImageData(left, top, width, height).data)
     context.clearRect(left, top, width, height)
     return { pixels: node.toDataURL(), withoutDocument: copy.toDataURL(), documentPixels, expectedDocumentPixels, target: recipient }
-  }, target)
+  }, { recipient: target, home })
 }
 
 for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`, () => {
@@ -200,27 +202,28 @@ for (const dpr of [1, 2, 3]) test.describe(`document raster mask at DPR ${dpr}`,
         ctx.fillStyle = '#456789'; ctx.fillRect(0, 0, node.width, node.height)
       })
       const before = await reducedMotionFrame(canvas)
-      await canvas.evaluate((node: HTMLCanvasElement) => {
+      await canvas.evaluate((node: HTMLCanvasElement, home) => {
         const ctx = node.getContext('2d')!
+        const x = home.x + 34, y = home.y - 29
         const scale = node.width / 640
         ctx.scale(scale / 3, scale / 3)
-        ctx.fillStyle = '#596575'; ctx.fillRect(346 * 3, 119 * 3, 48, 60)
-        ctx.fillStyle = '#fff4d6'; ctx.fillRect(347 * 3, 120 * 3, 42, 54)
-        ctx.fillStyle = '#d7aa66'; ctx.fillRect(347 * 3, 120 * 3, 42, 6)
-        ctx.fillStyle = '#8794a0'; ctx.fillRect(349 * 3, 125 * 3, 27, 3)
-        ctx.fillRect(349 * 3, 128 * 3, 21, 3)
-      })
+        ctx.fillStyle = '#596575'; ctx.fillRect(x * 3, y * 3, 48, 60)
+        ctx.fillStyle = '#fff4d6'; ctx.fillRect((x + 1) * 3, (y + 1) * 3, 42, 54)
+        ctx.fillStyle = '#d7aa66'; ctx.fillRect((x + 1) * 3, (y + 1) * 3, 42, 6)
+        ctx.fillStyle = '#8794a0'; ctx.fillRect((x + 3) * 3, (y + 6) * 3, 27, 3)
+        ctx.fillRect((x + 3) * 3, (y + 9) * 3, 21, 3)
+      }, activityAnchor({ col: 19, row: 6 }))
       const during = await reducedMotionFrame(canvas)
       expect(during.pixels).not.toBe(before.pixels)
       expect(during.withoutDocument).toBe(before.withoutDocument)
       expect(during.documentPixels).toEqual(before.expectedDocumentPixels)
       // A changed ghost pixel immediately outside the mask must still fail.
-      await canvas.evaluate((node: HTMLCanvasElement) => {
+      await canvas.evaluate((node: HTMLCanvasElement, home) => {
         const ctx = node.getContext('2d')!
         ctx.resetTransform()
         ctx.fillStyle = '#ff0000'
-        ctx.fillRect(Math.floor(346 * node.width / 640) - 1, Math.floor(125 * node.width / 640), 1, 1)
-      })
+        ctx.fillRect(Math.floor((home.x + 34) * node.width / 640) - 1, Math.floor((home.y - 23) * node.width / 640), 1, 1)
+      }, activityAnchor({ col: 19, row: 6 }))
       expect((await reducedMotionFrame(canvas)).withoutDocument).not.toBe(before.withoutDocument)
     }
   })
@@ -317,12 +320,12 @@ test('hidden polling drops handoffs; a long frame gap expires active and waiting
 // Demo ghosts use neutral #c6ced4 artwork with a subtle light/shade overlay.
 // Identify its cool gray body (including shaded edges), excluding the warm floor
 // and dark eyes. Read actual canvas pixels at
-// the orchestrator's workstation (scene 104, 148; native device pixel ratio), not desk labels
+// the orchestrator's activity anchor (native device pixel ratio), not desk labels
 // that remain stationary during travel. Hover may move the body vertically by 6px.
 async function orchestratorBounds(canvas: Locator) {
-  return canvas.evaluate((el: HTMLCanvasElement) => {
+  return canvas.evaluate((el: HTMLCanvasElement, home) => {
     const scale = el.width / 640
-    const left = Math.round(88 * scale), top = Math.round(120 * scale)
+    const left = Math.round((home.x - 16) * scale), top = Math.round((home.y - 28) * scale)
     const width = Math.round(32 * scale), height = Math.round(36 * scale)
     const { data } = el.getContext('2d')!.getImageData(left, top, width, height)
     const xs: number[] = [], ys: number[] = []
@@ -334,15 +337,16 @@ async function orchestratorBounds(canvas: Locator) {
       }
     }
     return xs.length ? { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys), pixels: xs.length / (scale * scale) } : null
-  })
+  }, activityAnchor({ col: 6, row: 6 }))
 }
 
 async function expectOrchestratorAtDesk(canvas: Locator) {
+  const home = activityAnchor({ col: 6, row: 6 })
   // Rest ends travel before directional facing finishes easing back to front.
   // Wait for settled horizontal bounds without waiting for hover to stop.
   await expect.poll(async () => {
     const bounds = await orchestratorBounds(canvas)
-    return !!bounds && Math.abs(bounds.left - 95) <= 2 && Math.abs(bounds.right - 112) <= 2
+    return !!bounds && Math.abs(bounds.left - (home.x - 9)) <= 2 && Math.abs(bounds.right - (home.x + 8)) <= 2
   }, { timeout: 3000 }).toBe(true)
   // Sample several frames so a transient pass through the workstation is not
   // enough. The tight horizontal bounds also require the facing to settle.
@@ -351,10 +355,10 @@ async function expectOrchestratorAtDesk(canvas: Locator) {
     const bounds = await orchestratorBounds(canvas)
     expect(bounds).not.toBeNull()
     expect(bounds!.pixels).toBeGreaterThan(180)
-    expect(Math.abs(bounds!.left - 95)).toBeLessThanOrEqual(2)
-    expect(Math.abs(bounds!.right - 112)).toBeLessThanOrEqual(2)
-    expect(Math.abs(bounds!.top - 128)).toBeLessThanOrEqual(7)
-    expect(Math.abs(bounds!.bottom - 147)).toBeLessThanOrEqual(7)
+    expect(Math.abs(bounds!.left - (home.x - 9))).toBeLessThanOrEqual(2)
+    expect(Math.abs(bounds!.right - (home.x + 8))).toBeLessThanOrEqual(2)
+    expect(Math.abs(bounds!.top - (home.y - 20))).toBeLessThanOrEqual(7)
+    expect(Math.abs(bounds!.bottom - (home.y - 1))).toBeLessThanOrEqual(7)
     await canvas.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
   }
 }
