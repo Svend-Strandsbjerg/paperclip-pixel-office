@@ -25,7 +25,7 @@ h1 { font-size: clamp(30px, 3.4vw, 44px); font-weight: 550; letter-spacing: -1.5
 .scene { position: relative; }
 canvas { display: block; width: 100%; height: auto; image-rendering: pixelated; }
 .labels { position: absolute; inset: 0; pointer-events: none; }
-.desk-label { position: absolute; transform: translate(-50%, -100%); display: flex; align-items: center; gap: 7px; white-space: nowrap; font: 10px ui-monospace, monospace; padding: 5px 7px; color: #eef3e5; background: #263b35; box-shadow: 0 2px 0 #18282577; border-radius: 2px; }
+.desk-label { position: absolute; transform: translate(-50%, 0); display: flex; align-items: center; gap: 7px; white-space: nowrap; font: 10px ui-monospace, monospace; padding: 5px 7px; color: #eef3e5; background: #263b35; box-shadow: 0 2px 0 #18282577; border-radius: 2px; }
 .desk-label strong { font-weight: 500; }
 .desk-label .activity { font-size: 8px; color: #c4d0c1; }
 .desk-label[data-activity="working"] .activity { color: #c7f38f; }

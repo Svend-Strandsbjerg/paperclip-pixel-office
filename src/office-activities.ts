@@ -22,7 +22,7 @@ function position(points: Point[], distance: number): Point {
 // polling, roster order, or another visitor leaving to move an established group.
 function coffeeAnchor(home: Point, id: string): Point {
   const module = Math.floor(home.y / MODULE_HEIGHT)
-  const row = Math.floor((home.y % MODULE_HEIGHT - 148) / 128)
+  const row = Math.floor((home.y % MODULE_HEIGHT - activityAnchor({ col: 0, row: 6 }).y) / 128)
   const slot = row * 2 + (home.x > 200 ? 1 : 0)
   const spots = [[480, 260], [529, 255], [581, 262], [477, 310], [530, 305], [583, 312]]
   const [x, y] = spots[slot]
@@ -97,7 +97,7 @@ export function officeActivities() {
         // Existing clear circulation lanes; local pauses never cross desk furniture.
         // Seat-derived wander slots and separate lounge rows keep all pause
         // destinations at least 40 units from every other agent's targets.
-        const slot = Math.floor((e.home.y % MODULE_HEIGHT - 148) / 128) * 2 + (e.home.x > 200 ? 1 : 0)
+        const slot = Math.floor((e.home.y % MODULE_HEIGHT - activityAnchor({ col: 0, row: 6 }).y) / 128) * 2 + (e.home.x > 200 ? 1 : 0)
         const destination = kind === 'wander' ? { x: 400, y: y + 70 + slot * 44 + decision * 3 }
           : kind === 'local_idle' ? { x: e.home.x + 18, y: e.home.y + 4 }
           : kind === 'lounge' ? { x: e.coffee.x, y: e.coffee.y + 100 } : e.coffee
