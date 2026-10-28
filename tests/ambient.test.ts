@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { officeLayout } from '../src/layout'
+import { activityAnchor, officeLayout } from '../src/layout'
 import { ambientMotion } from '../src/ambient'
 import { mapVisualState, rosterLayout } from '../src/state'
 import { sceneSize } from '../src/scene'
@@ -20,7 +20,7 @@ test('ambient paths are deterministic, staggered, bounded, and clear of solid fu
       assert.ok(Math.abs(pose.x) <= 8 && pose.y >= 0 && pose.y <= 8)
       if (pose.y > 1) moving.push(agent.id)
       // Ground footprint stays below furniture; ghost artwork floats above it.
-      const x = agent.col * 16 + 8 + pose.x, y = agent.row * 16 + 52 + pose.y
+      const x = activityAnchor(agent).x + pose.x, y = activityAnchor(agent).y + pose.y
       assert.ok(x - 8 > 16 && x + 8 < sceneSize(state).width - 16 && y + 8 < sceneSize(state).height - 16)
       for (const f of furniture) assert.ok(x + 8 <= f.x || x - 8 >= f.x + f.width || y - 3 >= f.y + f.height || y + 3 <= f.y)
     }
